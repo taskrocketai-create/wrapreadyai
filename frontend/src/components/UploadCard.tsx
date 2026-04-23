@@ -1,9 +1,14 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { uploadFile } from '../api'
 
 export default function UploadCard() {
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState<File | null>(null)
+  const [vehicleType, setVehicleType] = useState('Full Wrap')
+  const [printWidth, setPrintWidth] = useState('54"')
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -18,8 +23,21 @@ export default function UploadCard() {
     if (selected) setFile(selected)
   }
 
-  const handleAnalyze = () => {
-    if (file) navigate('/analysis')
+  const handleAnalyze = async () => {
+    if (!file) return
+    setUploading(true)
+    setError(null)
+    try {
+      const result = await uploadFile(file, vehicleType, printWidth)
+      sessionStorage.setItem('job_id', result.job_id)
+      navigate('/analysis')
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Upload failed. Please try again.'
+      setError(msg)
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -64,46 +82,55 @@ export default function UploadCard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         {[
-          { label: 'Vehicle Type', options: ['Full Wrap', 'Partial Wrap', 'Hood Only', 'Roof Only'] },
-          { label: 'Print Width', options: ['54"', '60"', '72"', 'Custom'] },
-        ].map(({ label, options }) => (
+          { label: 'Vehicle Type', value: vehicleType, options: ['Full Wrap', 'Partial Wrap', 'Hood Only', 'Roof Only'], onChange: setVehicleType },
+          { label: 'Print Width', value: printWidth, options: ['54"', '60"', '72"', 'Custom'], onChange: setPrintWidth },
+        ].map(({ label, value, options, onChange }) => (
           <div key={label}>
             <label style={{ display: 'block', color: '#9CA3AF', fontSize: '12px', fontWeight: '500', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               {label}
             </label>
-            <select style={{
-              width: '100%',
-              backgroundColor: '#111827',
-              border: '1px solid #374151',
-              borderRadius: '6px',
-              color: '#E5E7EB',
-              padding: '8px 12px',
-              fontSize: '14px',
-            }}>
+            <select
+              value={value}
+              onChange={e => onChange(e.target.value)}
+              style={{
+                width: '100%',
+                backgroundColor: '#111827',
+                border: '1px solid #374151',
+                borderRadius: '6px',
+                color: '#E5E7EB',
+                padding: '8px 12px',
+                fontSize: '14px',
+              }}
+            >
               {options.map(o => <option key={o}>{o}</option>)}
             </select>
           </div>
         ))}
       </div>
 
+      {error && (
+        <p style={{ color: '#F87171', fontSize: '13px', margin: 0 }}>{error}</p>
+      )}
+
       <button
         onClick={handleAnalyze}
-        disabled={!file}
+        disabled={!file || uploading}
         style={{
           width: '100%',
           padding: '14px',
           borderRadius: '8px',
           fontWeight: '700',
           fontSize: '15px',
-          cursor: file ? 'pointer' : 'not-allowed',
-          backgroundColor: file ? '#14B8A6' : '#1F2937',
-          color: file ? '#0B0F14' : '#4B5563',
+          cursor: file && !uploading ? 'pointer' : 'not-allowed',
+          backgroundColor: file && !uploading ? '#14B8A6' : '#1F2937',
+          color: file && !uploading ? '#0B0F14' : '#4B5563',
           border: 'none',
           transition: 'background-color 0.15s',
         }}
       >
-        {file ? 'Analyze File' : 'Select a file to continue'}
+        {uploading ? 'Uploading...' : file ? 'Analyze File' : 'Select a file to continue'}
       </button>
     </div>
   )
 }
+
