@@ -7,15 +7,15 @@ import ReviewDashboard from './pages/ReviewDashboard'
 
 export default function App() {
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0B0F14' }}>
+    <div className="min-h-screen bg-brand-bg">
       <Header />
       <main>
         <Routes>
           <Route path="/" element={<Navigate to="/upload" replace />} />
-          <Route path="/upload" element={<UploadPage />} />
+          <Route path="/upload"   element={<UploadPage />} />
           <Route path="/analysis" element={<AnalysisPage />} />
-          <Route path="/results" element={<ResultsPage />} />
-          <Route path="/review" element={<ReviewDashboard />} />
+          <Route path="/results"  element={<ResultsPage />} />
+          <Route path="/review"   element={<ReviewDashboard />} />
         </Routes>
       </main>
     </div>

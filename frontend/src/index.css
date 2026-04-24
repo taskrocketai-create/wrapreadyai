@@ -4,17 +4,16 @@
 
 @layer base {
   body {
-    background-color: #0B0F14;
-    color: #E5E7EB;
-    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-brand-bg text-brand-text font-sans;
   }
 }
 
 @layer components {
+  /* ── Buttons ────────────────────────────────────── */
   .btn-primary {
-    @apply font-semibold px-6 py-3 rounded transition-colors duration-150 cursor-pointer;
+    @apply font-semibold px-6 py-3 rounded transition-colors duration-150 cursor-pointer border-none;
     background-color: #14B8A6;
-    color: white;
+    color: #0B0F14;
   }
   .btn-primary:hover {
     background-color: #0F766E;
@@ -29,9 +28,58 @@
     border-color: #14B8A6;
     color: white;
   }
+  .btn-ghost {
+    @apply bg-transparent border border-brand-muted text-brand-secondary font-semibold
+           px-5 py-2.5 rounded-lg text-sm transition-all duration-150 cursor-pointer;
+  }
+  .btn-ghost:hover {
+    border-color: #14B8A6;
+    color: #E5E7EB;
+  }
+
+  /* ── Cards & Panels ────────────────────────────── */
   .card {
-    @apply rounded-lg;
-    background-color: #111827;
-    border: 1px solid #1F2937;
+    @apply rounded-xl bg-brand-surface border border-brand-border;
+  }
+  .panel {
+    @apply rounded-xl bg-brand-surface border border-brand-border p-6;
+  }
+
+  /* ── Page layouts ──────────────────────────────── */
+  .page {
+    @apply max-w-[1100px] mx-auto px-6 py-12;
+  }
+  .page-wide {
+    @apply max-w-[1200px] mx-auto px-6 py-12;
+  }
+  .page-narrow {
+    @apply max-w-2xl mx-auto px-6 py-12;
+  }
+
+  /* ── Typography ────────────────────────────────── */
+  .page-title {
+    @apply text-brand-text font-extrabold text-[28px] tracking-tight mb-2;
+  }
+  .page-subtitle {
+    @apply text-brand-subtle text-[15px];
+  }
+  .section-label {
+    @apply text-brand-secondary text-xs font-semibold uppercase tracking-[0.1em] mb-4;
+  }
+
+  /* ── Data rows ─────────────────────────────────── */
+  .data-row {
+    @apply flex justify-between py-2 border-b border-brand-border;
+  }
+  .data-key {
+    @apply text-brand-subtle text-sm;
+  }
+  .data-val {
+    @apply text-brand-text text-sm font-medium;
+  }
+
+  /* ── Check items ───────────────────────────────── */
+  .check-item {
+    @apply flex items-start justify-between p-3 bg-brand-bg rounded-lg border border-brand-border;
   }
 }

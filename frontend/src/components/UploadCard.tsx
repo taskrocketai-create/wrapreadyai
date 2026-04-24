@@ -32,75 +32,61 @@ export default function UploadCard() {
       sessionStorage.setItem('job_id', result.job_id)
       navigate('/analysis')
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Upload failed. Please try again.'
-      setError(msg)
+      setError(err instanceof Error ? err.message : 'Upload failed. Please try again.')
     } finally {
       setUploading(false)
     }
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div className="flex flex-col gap-4">
+      {/* Drop zone */}
       <div
+        className="border-2 border-dashed rounded-xl px-10 py-16 text-center cursor-pointer transition-all duration-200"
+        style={{
+          borderColor: dragging ? '#14B8A6' : file ? '#0F766E' : '#374151',
+          backgroundColor: dragging ? 'rgba(20,184,166,0.05)' : 'transparent',
+        }}
         onDragOver={e => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        style={{
-          border: `2px dashed ${dragging ? '#14B8A6' : file ? '#0F766E' : '#374151'}`,
-          borderRadius: '12px',
-          padding: '60px 40px',
-          textAlign: 'center',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          backgroundColor: dragging ? 'rgba(20, 184, 166, 0.05)' : 'transparent',
-        }}
         onClick={() => document.getElementById('file-input')?.click()}
       >
         <input
           id="file-input"
           type="file"
           accept=".ai,.eps,.pdf,.png,.jpg,.jpeg,.tiff,.psd"
-          style={{ display: 'none' }}
+          className="hidden"
           onChange={handleFileChange}
         />
-        <div style={{ fontSize: '48px', marginBottom: '16px' }}>
-          {file ? '✓' : '↑'}
-        </div>
+        <div className="text-5xl mb-4">{file ? '✓' : '↑'}</div>
         {file ? (
           <>
-            <p style={{ color: '#14B8A6', fontWeight: '600', fontSize: '16px', marginBottom: '4px' }}>{file.name}</p>
-            <p style={{ color: '#6B7280', fontSize: '14px' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            <p className="text-teal font-semibold text-base mb-1">{file.name}</p>
+            <p className="text-brand-subtle text-sm">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
           </>
         ) : (
           <>
-            <p style={{ color: '#E5E7EB', fontWeight: '600', fontSize: '16px', marginBottom: '8px' }}>Drop your file here</p>
-            <p style={{ color: '#6B7280', fontSize: '14px' }}>AI, EPS, PDF, PNG, JPG, TIFF, PSD — up to 500MB</p>
+            <p className="text-brand-text font-semibold text-base mb-2">Drop your file here</p>
+            <p className="text-brand-subtle text-sm">AI, EPS, PDF, PNG, JPG, TIFF, PSD — up to 500 MB</p>
           </>
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+      {/* Options */}
+      <div className="grid grid-cols-2 gap-3">
         {[
           { label: 'Vehicle Type', value: vehicleType, options: ['Full Wrap', 'Partial Wrap', 'Hood Only', 'Roof Only'], onChange: setVehicleType },
-          { label: 'Print Width', value: printWidth, options: ['54"', '60"', '72"', 'Custom'], onChange: setPrintWidth },
+          { label: 'Print Width',  value: printWidth,  options: ['54"', '60"', '72"', 'Custom'],                        onChange: setPrintWidth },
         ].map(({ label, value, options, onChange }) => (
           <div key={label}>
-            <label style={{ display: 'block', color: '#9CA3AF', fontSize: '12px', fontWeight: '500', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label className="block text-brand-secondary text-xs font-medium mb-1.5 uppercase tracking-widest">
               {label}
             </label>
             <select
               value={value}
               onChange={e => onChange(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: '#111827',
-                border: '1px solid #374151',
-                borderRadius: '6px',
-                color: '#E5E7EB',
-                padding: '8px 12px',
-                fontSize: '14px',
-              }}
+              className="w-full bg-brand-bg border border-brand-muted rounded-md text-brand-text px-3 py-2 text-sm"
             >
               {options.map(o => <option key={o}>{o}</option>)}
             </select>
@@ -108,27 +94,19 @@ export default function UploadCard() {
         ))}
       </div>
 
-      {error && (
-        <p style={{ color: '#F87171', fontSize: '13px', margin: 0 }}>{error}</p>
-      )}
+      {error && <p className="text-red-400 text-sm">{error}</p>}
 
       <button
         onClick={handleAnalyze}
         disabled={!file || uploading}
+        className="w-full py-3.5 rounded-lg font-bold text-[15px] transition-colors duration-150 border-none"
         style={{
-          width: '100%',
-          padding: '14px',
-          borderRadius: '8px',
-          fontWeight: '700',
-          fontSize: '15px',
           cursor: file && !uploading ? 'pointer' : 'not-allowed',
           backgroundColor: file && !uploading ? '#14B8A6' : '#1F2937',
           color: file && !uploading ? '#0B0F14' : '#4B5563',
-          border: 'none',
-          transition: 'background-color 0.15s',
         }}
       >
-        {uploading ? 'Uploading...' : file ? 'Analyze File' : 'Select a file to continue'}
+        {uploading ? 'Uploading…' : file ? 'Analyze File' : 'Select a file to continue'}
       </button>
     </div>
   )

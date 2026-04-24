@@ -27,98 +27,66 @@ export default function BeforeAfterSlider({
   const handleMouseDown = () => { dragging.current = true }
   const handleMouseMove = (e: React.MouseEvent) => { if (dragging.current) updatePos(e.clientX) }
   const handleMouseUp = () => { dragging.current = false }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    updatePos(e.touches[0].clientX)
-  }
+  const handleTouchMove = (e: React.TouchEvent) => { updatePos(e.touches[0].clientX) }
 
   return (
     <div
       ref={containerRef}
+      className="relative w-full h-[400px] rounded-xl overflow-hidden cursor-ew-resize select-none"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onTouchMove={handleTouchMove}
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '400px',
-        borderRadius: '12px',
-        overflow: 'hidden',
-        cursor: 'ew-resize',
-        userSelect: 'none',
-      }}
     >
       {/* Before panel */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        backgroundColor: beforeColor,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        <div style={{ textAlign: 'center', opacity: 0.4 }}>
-          <div style={{ fontSize: '64px', marginBottom: '8px' }}>🖼</div>
-          <p style={{ color: '#9CA3AF', fontSize: '14px' }}>Original file</p>
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        style={{ backgroundColor: beforeColor }}
+      >
+        <div className="text-center opacity-40">
+          <div className="text-6xl mb-2">🖼</div>
+          <p className="text-brand-secondary text-sm">Original file</p>
         </div>
       </div>
 
-      {/* After panel (clipped) */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        clipPath: `inset(0 ${100 - sliderPos}% 0 0)`,
-        backgroundColor: afterColor,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        <div style={{ textAlign: 'center', opacity: 0.5 }}>
-          <div style={{ fontSize: '64px', marginBottom: '8px' }}>✨</div>
-          <p style={{ color: '#E5E7EB', fontSize: '14px' }}>Processed output</p>
+      {/* After panel — clipped dynamically */}
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)`, backgroundColor: afterColor }}
+      >
+        <div className="text-center opacity-50">
+          <div className="text-6xl mb-2">✨</div>
+          <p className="text-brand-text text-sm">Processed output</p>
         </div>
       </div>
 
-      {/* Divider line */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        left: `${sliderPos}%`,
-        width: '2px',
-        backgroundColor: '#14B8A6',
-        transform: 'translateX(-50%)',
-        pointerEvents: 'none',
-      }}>
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '32px',
-          height: '32px',
-          borderRadius: '50%',
-          backgroundColor: '#14B8A6',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#0B0F14',
-          fontSize: '14px',
-          fontWeight: '700',
-          boxShadow: '0 0 0 3px rgba(20,184,166,0.3)',
-        }}>
+      {/* Divider handle */}
+      <div
+        className="absolute top-0 bottom-0 w-0.5 pointer-events-none"
+        style={{ left: `${sliderPos}%`, backgroundColor: '#14B8A6', transform: 'translateX(-50%)' }}
+      >
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center text-brand-bg text-sm font-bold"
+          style={{ backgroundColor: '#14B8A6', boxShadow: '0 0 0 3px rgba(20,184,166,0.3)' }}
+        >
           ⟺
         </div>
       </div>
 
       {/* Labels */}
-      <div style={{ position: 'absolute', top: '12px', left: '12px', pointerEvents: 'none' }}>
-        <span style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#9CA3AF', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '4px' }}>{beforeLabel}</span>
+      <div className="absolute top-3 left-3 pointer-events-none">
+        <span className="bg-black/70 text-brand-secondary text-xs font-semibold px-2.5 py-1 rounded">
+          {beforeLabel}
+        </span>
       </div>
-      <div style={{ position: 'absolute', top: '12px', right: '12px', pointerEvents: 'none' }}>
-        <span style={{ backgroundColor: 'rgba(20,184,166,0.2)', color: '#14B8A6', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '4px' }}>{afterLabel}</span>
+      <div className="absolute top-3 right-3 pointer-events-none">
+        <span
+          className="text-xs font-semibold px-2.5 py-1 rounded"
+          style={{ backgroundColor: 'rgba(20,184,166,0.2)', color: '#14B8A6' }}
+        >
+          {afterLabel}
+        </span>
       </div>
     </div>
   )

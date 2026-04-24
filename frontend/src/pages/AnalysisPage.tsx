@@ -13,15 +13,9 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     const jobId = sessionStorage.getItem('job_id')
-    if (!jobId) {
-      navigate('/upload')
-      return
-    }
+    if (!jobId) { navigate('/upload'); return }
 
-    // Animate progress bar up to 90% while waiting for the API
-    const interval = setInterval(() => {
-      setProgress(p => (p < 90 ? p + 2 : p))
-    }, 120)
+    const interval = setInterval(() => setProgress(p => p < 90 ? p + 2 : p), 120)
 
     analyzeJob(jobId)
       .then(result => {
@@ -45,12 +39,9 @@ export default function AnalysisPage() {
 
   if (error) {
     return (
-      <div style={{ maxWidth: '680px', margin: '80px auto', padding: '0 24px', textAlign: 'center' }}>
-        <p style={{ color: '#F87171', fontSize: '16px', marginBottom: '24px' }}>{error}</p>
-        <button
-          onClick={() => navigate('/upload')}
-          style={{ padding: '12px 24px', backgroundColor: '#14B8A6', border: 'none', color: '#0B0F14', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}
-        >
+      <div className="page-narrow text-center mt-20">
+        <p className="text-red-400 text-base mb-6">{error}</p>
+        <button onClick={() => navigate('/upload')} className="btn-primary">
           Back to Upload
         </button>
       </div>
@@ -58,13 +49,14 @@ export default function AnalysisPage() {
   }
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '48px 24px' }}>
-      <div style={{ marginBottom: '32px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+    <div className="page">
+      {/* Page header */}
+      <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 style={{ color: '#E5E7EB', fontWeight: '800', fontSize: '28px', margin: '0 0 8px 0' }}>
-            {loading ? 'Analyzing file...' : 'Analysis complete'}
+          <h1 className="page-title">
+            {loading ? 'Analyzing file…' : 'Analysis complete'}
           </h1>
-          <p style={{ color: '#6B7280', fontSize: '15px', margin: 0 }}>
+          <p className="page-subtitle">
             {loading
               ? 'Checking resolution, color mode, bleed, and embedded elements.'
               : issueCount > 0
@@ -80,82 +72,78 @@ export default function AnalysisPage() {
         )}
       </div>
 
+      {/* Progress bar */}
       {loading && (
-        <div style={{ marginBottom: '32px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ color: '#9CA3AF', fontSize: '13px' }}>Processing...</span>
-            <span style={{ color: '#14B8A6', fontSize: '13px', fontWeight: '600' }}>{progress}%</span>
+        <div className="mb-8">
+          <div className="flex justify-between mb-2">
+            <span className="text-brand-secondary text-xs">Processing…</span>
+            <span className="text-teal text-xs font-semibold">{progress}%</span>
           </div>
-          <div style={{ height: '4px', backgroundColor: '#1F2937', borderRadius: '2px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', backgroundColor: '#14B8A6', width: `${progress}%`, transition: 'width 0.1s linear', borderRadius: '2px' }} />
+          <div className="h-1 bg-brand-border rounded-full overflow-hidden">
+            <div
+              className="h-full bg-teal rounded-full transition-[width] duration-100 ease-linear"
+              style={{ width: `${progress}%` }}
+            />
           </div>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-        {/* Left: file info */}
-        <div style={{ backgroundColor: '#111827', border: '1px solid #1F2937', borderRadius: '12px', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #1F2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#9CA3AF', fontSize: '13px', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Original</span>
+      {/* Before / After preview */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Original */}
+        <div className="card overflow-hidden">
+          <div className="px-5 py-4 border-b border-brand-border flex justify-between items-center">
+            <span className="section-label mb-0">Original</span>
             <StatusBadge status="pending" label="Source File" />
           </div>
-          <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0B0F14' }}>
-            <div style={{ textAlign: 'center', opacity: 0.3 }}>
-              <div style={{ fontSize: '64px', marginBottom: '12px' }}>🖼</div>
-              <p style={{ color: '#9CA3AF', fontSize: '14px', margin: 0 }}>{job?.filename ?? '—'}</p>
-              <p style={{ color: '#6B7280', fontSize: '13px', margin: '4px 0 0 0' }}>{job ? `${job.file_size_mb} MB` : ''}</p>
+          <div className="h-[360px] flex items-center justify-center bg-brand-bg">
+            <div className="text-center opacity-30">
+              <div className="text-6xl mb-3">🖼</div>
+              <p className="text-brand-secondary text-sm">{job?.filename ?? '—'}</p>
+              <p className="text-brand-subtle text-xs mt-1">{job ? `${job.file_size_mb} MB` : ''}</p>
             </div>
           </div>
         </div>
 
-        {/* Right: output preview */}
-        <div style={{ backgroundColor: '#111827', border: '1px solid #1F2937', borderRadius: '12px', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #1F2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#9CA3AF', fontSize: '13px', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Output Preview</span>
+        {/* Output */}
+        <div className="card overflow-hidden">
+          <div className="px-5 py-4 border-b border-brand-border flex justify-between items-center">
+            <span className="section-label mb-0">Output Preview</span>
             <StatusBadge
               status={loading ? 'processing' : overallStatus === 'warning' ? 'warning' : overallStatus === 'error' ? 'error' : 'ready'}
               label={loading ? 'Processing' : overallStatus === 'warning' ? 'Needs Review' : overallStatus === 'error' ? 'Blocked' : 'Ready'}
             />
           </div>
-          <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0B0F14' }}>
+          <div className="h-[360px] flex items-center justify-center bg-brand-bg">
             {loading ? (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ width: '48px', height: '48px', border: '3px solid #1F2937', borderTop: '3px solid #14B8A6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-                <p style={{ color: '#6B7280', fontSize: '14px', margin: 0 }}>Building output...</p>
+              <div className="text-center">
+                <div className="w-12 h-12 border-[3px] border-brand-border border-t-teal rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-brand-subtle text-sm">Building output…</p>
               </div>
             ) : (
-              <div style={{ textAlign: 'center', opacity: 0.4 }}>
-                <div style={{ fontSize: '64px', marginBottom: '12px' }}>✨</div>
-                <p style={{ color: '#9CA3AF', fontSize: '14px', margin: 0 }}>Processed output ready</p>
+              <div className="text-center opacity-40">
+                <div className="text-6xl mb-3">✨</div>
+                <p className="text-brand-secondary text-sm">Processed output ready</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      <div style={{ marginTop: '24px' }}>
+      <div className="mt-6">
         <AnalysisPanel checks={checks} loading={loading} />
       </div>
 
       {!loading && (
-        <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button
-            onClick={() => navigate('/upload')}
-            style={{ padding: '12px 24px', backgroundColor: 'transparent', border: '1px solid #374151', color: '#9CA3AF', borderRadius: '8px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
-          >
+        <div className="mt-6 flex justify-end gap-3">
+          <button onClick={() => navigate('/upload')} className="btn-ghost">
             Upload Different File
           </button>
-          <button
-            onClick={() => navigate('/results')}
-            style={{ padding: '12px 24px', backgroundColor: '#14B8A6', border: 'none', color: '#0B0F14', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}
-          >
+          <button onClick={() => navigate('/results')} className="btn-primary">
             View Results →
           </button>
         </div>
       )}
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
-

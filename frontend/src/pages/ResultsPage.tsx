@@ -13,55 +13,41 @@ export default function ResultsPage() {
 
   useEffect(() => {
     const jobId = sessionStorage.getItem('job_id')
-    if (!jobId) {
-      navigate('/upload')
-      return
-    }
+    if (!jobId) { navigate('/upload'); return }
     getJob(jobId)
-      .then(data => {
-        setJob(data)
-        setLoading(false)
-      })
-      .catch(() => {
-        setError('Could not load results. Please re-upload your file.')
-        setLoading(false)
-      })
+      .then(data => { setJob(data); setLoading(false) })
+      .catch(() => { setError('Could not load results. Please re-upload your file.'); setLoading(false) })
   }, [navigate])
 
   if (loading) {
     return (
-      <div style={{ maxWidth: '1100px', margin: '80px auto', padding: '0 24px', textAlign: 'center' }}>
-        <div style={{ width: '40px', height: '40px', border: '3px solid #1F2937', borderTop: '3px solid #14B8A6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="page text-center mt-20">
+        <div className="w-10 h-10 border-[3px] border-brand-border border-t-teal rounded-full animate-spin mx-auto" />
       </div>
     )
   }
 
   if (error || !job) {
     return (
-      <div style={{ maxWidth: '680px', margin: '80px auto', padding: '0 24px', textAlign: 'center' }}>
-        <p style={{ color: '#F87171', fontSize: '16px', marginBottom: '24px' }}>{error ?? 'No results found.'}</p>
-        <button
-          onClick={() => navigate('/upload')}
-          style={{ padding: '12px 24px', backgroundColor: '#14B8A6', border: 'none', color: '#0B0F14', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}
-        >
+      <div className="page-narrow text-center mt-20">
+        <p className="text-red-400 text-base mb-6">{error ?? 'No results found.'}</p>
+        <button onClick={() => navigate('/upload')} className="btn-primary">
           Back to Upload
         </button>
       </div>
     )
   }
 
-  const allReady = job.checks.every(c => c.status === 'ready')
+  const allReady  = job.checks.every(c => c.status === 'ready')
   const issueCount = job.checks.filter(c => c.status === 'error' || c.status === 'warning').length
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '48px 24px' }}>
-      <div style={{ marginBottom: '32px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+    <div className="page">
+      {/* Page header */}
+      <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 style={{ color: '#E5E7EB', fontWeight: '800', fontSize: '28px', margin: '0 0 8px 0' }}>
-            Results
-          </h1>
-          <p style={{ color: '#6B7280', fontSize: '15px', margin: 0 }}>
+          <h1 className="page-title">Results</h1>
+          <p className="page-subtitle">
             {allReady
               ? 'All issues fixed. File is print-ready.'
               : `${issueCount} issue${issueCount !== 1 ? 's' : ''} detected. Review before printing.`}
@@ -73,22 +59,22 @@ export default function ResultsPage() {
         />
       </div>
 
-      <div style={{ backgroundColor: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '24px', marginBottom: '24px' }}>
-        <h3 style={{ color: '#9CA3AF', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 16px 0' }}>
-          Before / After
-        </h3>
+      {/* Before / After slider */}
+      <div className="panel mb-6">
+        <h3 className="section-label">Before / After</h3>
         <BeforeAfterSlider beforeLabel="Original (Source)" afterLabel="Output (Processed)" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-        <div style={{ backgroundColor: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '24px' }}>
-          <h3 style={{ color: '#E5E7EB', fontWeight: '700', fontSize: '16px', margin: '0 0 16px 0' }}>Check Results</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {job.checks.map((check) => (
-              <div key={check.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', backgroundColor: '#0B0F14', borderRadius: '6px' }}>
+      {/* Check results + output file info */}
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="panel">
+          <h3 className="text-brand-text font-bold text-base mb-4">Check Results</h3>
+          <div className="flex flex-col gap-2.5">
+            {job.checks.map(check => (
+              <div key={check.label} className="flex justify-between items-center px-3.5 py-2.5 bg-brand-bg rounded-md">
                 <div>
-                  <p style={{ color: '#E5E7EB', fontWeight: '600', fontSize: '13px', margin: '0 0 2px 0' }}>{check.label}</p>
-                  <p style={{ color: '#6B7280', fontSize: '12px', margin: 0 }}>{check.detail}</p>
+                  <p className="text-brand-text font-semibold text-xs mb-0.5">{check.label}</p>
+                  <p className="text-brand-subtle text-xs">{check.detail}</p>
                 </div>
                 <StatusBadge
                   status={check.status}
@@ -99,38 +85,27 @@ export default function ResultsPage() {
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '24px' }}>
-          <h3 style={{ color: '#E5E7EB', fontWeight: '700', fontSize: '16px', margin: '0 0 16px 0' }}>Output File</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {[
-              ['Filename', job.filename],
-              ['Vehicle', job.vehicle_type],
+        <div className="panel">
+          <h3 className="text-brand-text font-bold text-base mb-4">Output File</h3>
+          <div className="flex flex-col">
+            {([
+              ['Filename',    job.filename],
+              ['Vehicle',     job.vehicle_type],
               ['Print Width', job.print_width],
-              ['File Size', `${job.file_size_mb} MB`],
-              ['Job ID', job.id],
-              ['Status', job.status.charAt(0).toUpperCase() + job.status.slice(1)],
-            ].map(([key, value]) => (
-              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #1F2937' }}>
-                <span style={{ color: '#6B7280', fontSize: '13px' }}>{key}</span>
-                <span style={{ color: '#E5E7EB', fontSize: '13px', fontWeight: '500' }}>{value}</span>
+              ['File Size',   `${job.file_size_mb} MB`],
+              ['Job ID',      job.id],
+              ['Status',      job.status.charAt(0).toUpperCase() + job.status.slice(1)],
+            ] as [string, string][]).map(([key, value]) => (
+              <div key={key} className="data-row">
+                <span className="data-key">{key}</span>
+                <span className="data-val">{value}</span>
               </div>
             ))}
           </div>
-
-          <div style={{ marginTop: '20px' }}>
+          <div className="mt-5">
             <button
               onClick={() => downloadJobFile(job.id)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                backgroundColor: '#14B8A6',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#0B0F14',
-                fontWeight: '700',
-                fontSize: '14px',
-                cursor: 'pointer',
-              }}
+              className="w-full py-3 bg-teal text-brand-bg font-bold text-sm rounded-lg cursor-pointer border-none hover:bg-teal-dark transition-colors duration-150"
             >
               ↓ Download File
             </button>
@@ -138,21 +113,13 @@ export default function ResultsPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <ActionButtons
-          onReprocess={() => navigate('/analysis')}
-          showApproval={false}
-        />
-        <button
-          onClick={() => navigate('/review')}
-          style={{ padding: '12px 24px', backgroundColor: 'transparent', border: '1px solid #374151', color: '#9CA3AF', borderRadius: '8px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
-        >
+      {/* Footer actions */}
+      <div className="flex justify-between items-center">
+        <ActionButtons onReprocess={() => navigate('/analysis')} showApproval={false} />
+        <button onClick={() => navigate('/review')} className="btn-ghost">
           Send for Review →
         </button>
       </div>
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
-

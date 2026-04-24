@@ -1,5 +1,3 @@
-import React from 'react'
-
 interface ActionButtonsProps {
   onApprove?: () => void
   onReject?: () => void
@@ -15,35 +13,37 @@ export default function ActionButtons({
   onReprocess,
   showApproval = false,
 }: ActionButtonsProps) {
-  const btnBase: React.CSSProperties = {
-    padding: '10px 20px',
-    borderRadius: '6px',
-    fontWeight: '600',
-    fontSize: '14px',
-    cursor: 'pointer',
-    border: 'none',
-    transition: 'all 0.15s',
-  }
-
   return (
-    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+    <div className="flex gap-2.5 flex-wrap">
       {showApproval && (
         <>
-          <button onClick={onApprove} style={{ ...btnBase, backgroundColor: '#14B8A6', color: '#0B0F14' }}>
+          <button
+            onClick={onApprove}
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer border-none transition-all duration-150 bg-teal text-brand-bg hover:bg-teal-dark"
+          >
             ✓ Approve
           </button>
-          <button onClick={onReject} style={{ ...btnBase, backgroundColor: '#1F2937', color: '#F87171', border: '1px solid #374151' }}>
+          <button
+            onClick={onReject}
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-150 bg-brand-surface text-red-400 border border-brand-muted hover:border-red-500"
+          >
             ✗ Reject
           </button>
         </>
       )}
       {onDownload && (
-        <button onClick={onDownload} style={{ ...btnBase, backgroundColor: '#1F2937', color: '#E5E7EB', border: '1px solid #374151' }}>
+        <button
+          onClick={onDownload}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-150 bg-brand-surface text-brand-text border border-brand-muted hover:border-teal"
+        >
           ↓ Download
         </button>
       )}
       {onReprocess && (
-        <button onClick={onReprocess} style={{ ...btnBase, backgroundColor: 'transparent', color: '#9CA3AF', border: '1px solid #374151' }}>
+        <button
+          onClick={onReprocess}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-150 bg-transparent text-brand-secondary border border-brand-muted hover:border-teal hover:text-brand-text"
+        >
           ↺ Reprocess
         </button>
       )}

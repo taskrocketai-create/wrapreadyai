@@ -4,14 +4,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        teal: {
-          primary: '#14B8A6',
-          dark: '#0F766E',
-        },
         brand: {
-          black: '#0B0F14',
-          darkgray: '#1F2937',
-          lightgray: '#E5E7EB',
+          bg:        '#0B0F14',
+          surface:   '#111827',
+          border:    '#1F2937',
+          muted:     '#374151',
+          text:      '#E5E7EB',
+          secondary: '#9CA3AF',
+          subtle:    '#6B7280',
+          dim:       '#4B5563',
+          selected:  '#0F2027',
+        },
+        teal: {
+          DEFAULT: '#14B8A6',
+          dark:    '#0F766E',
         },
       },
       fontFamily: {
