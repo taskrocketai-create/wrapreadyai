@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { submitReview } from "@/lib/api";
 
 interface ReviewControlsProps { jobId: string; onSubmit?: () => void; }
 const FONTS = ["Helvetica Neue", "Montserrat", "Bebas Neue"];
@@ -12,20 +13,28 @@ export default function ReviewControls({ jobId, onSubmit }: ReviewControlsProps)
   const [ocrText, setOcrText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (selectedAction: string) => {
     setAction(selectedAction);
     setSubmitting(true);
+    setError(null);
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      await fetch(`${API_BASE}/api/jobs/${jobId}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: selectedAction, font_choice: fontChoice, smoothing_value: smoothing, texture_value: texture, notes, ocr_corrections: ocrText ? { text: ocrText } : {} }),
+      await submitReview(jobId, {
+        action: selectedAction,
+        font_choice: fontChoice,
+        smoothing_value: smoothing,
+        texture_value: texture,
+        notes,
+        ocr_corrections: ocrText ? { text: ocrText } : {},
       });
       setSubmitted(true);
       onSubmit?.();
-    } finally { setSubmitting(false); }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Submission failed.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) return <div className="bg-[#1F2937] rounded-xl p-6 text-[#14B8A6] font-semibold">✓ Review submitted: {action.replace("_", " ")}</div>;
@@ -56,6 +65,7 @@ export default function ReviewControls({ jobId, onSubmit }: ReviewControlsProps)
         <label className="text-xs text-[#6B7280] uppercase tracking-wide mb-1 block">Notes</label>
         <textarea className={inp} rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional notes..." />
       </div>
+      {error && <p className="text-red-400 text-sm">{error}</p>}
       <div className="grid grid-cols-3 gap-3 pt-2">
         <button onClick={() => handleSubmit("approved")} disabled={submitting} className="py-2 rounded-lg bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 font-semibold text-sm transition-colors disabled:opacity-50">✓ Approve</button>
         <button onClick={() => handleSubmit("needs_rework")} disabled={submitting} className="py-2 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30 font-semibold text-sm transition-colors disabled:opacity-50">⚠ Rework</button>
