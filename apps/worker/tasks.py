@@ -1,5 +1,6 @@
 from celery_app import celery_app
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "api"))
 
 

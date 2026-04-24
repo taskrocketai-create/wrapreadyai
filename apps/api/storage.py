@@ -1,5 +1,4 @@
 import os
-import shutil
 from pathlib import Path
 
 STORAGE_PATH = os.getenv("STORAGE_PATH", "./storage")

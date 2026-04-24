@@ -45,7 +45,7 @@ def count_dominant_colors(image_path: str, max_colors: int = 16) -> int:
         return 256
     try:
         img = Image.open(image_path).convert("RGB")
-        img_small = img.resize((100, 100), Image.LANCZOS)
+        img_small = img.resize((100, 100), Image.Resampling.LANCZOS)
         quantized = img_small.quantize(colors=max_colors)
         return len(quantized.getcolors() or [])
     except Exception:

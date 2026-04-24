@@ -44,7 +44,7 @@ def stage_upscale(img: "Image.Image", target_width_in: float, target_height_in: 
     target_w_px = int(target_width_in * target_dpi)
     target_h_px = int(target_height_in * target_dpi)
     if img.width < target_w_px or img.height < target_h_px:
-        img = img.resize((target_w_px, target_h_px), Image.LANCZOS)
+        img = img.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
     return img
 
 
@@ -216,7 +216,7 @@ def run_pipeline(
 
     preview_dir = get_preview_dir(job_id)
     preview_img = img.copy()
-    preview_img.thumbnail((800, 600), Image.LANCZOS)
+    preview_img.thumbnail((800, 600), Image.Resampling.LANCZOS)
     preview_path = str(preview_dir / "processed.jpg")
     preview_img.convert("RGB").save(preview_path, "JPEG", quality=85)
 

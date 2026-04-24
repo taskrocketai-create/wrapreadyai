@@ -42,7 +42,7 @@ def run_analysis_sync(job_id: str):
         try:
             prev_dir = get_preview_dir(job_id)
             img = Image.open(job.original_path)
-            img.thumbnail((800, 600), Image.LANCZOS)
+            img.thumbnail((800, 600), Image.Resampling.LANCZOS)
             img.convert("RGB").save(str(Path(prev_dir) / "original.jpg"), "JPEG", quality=85)
         except Exception:
             pass
