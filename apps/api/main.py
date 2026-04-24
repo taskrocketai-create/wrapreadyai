@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -8,10 +9,21 @@ load_dotenv()
 from database import Base, engine
 from routers import upload, jobs, analysis, review
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    os.makedirs("./storage/originals", exist_ok=True)
+    os.makedirs("./storage/outputs", exist_ok=True)
+    os.makedirs("./storage/previews", exist_ok=True)
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
 app = FastAPI(
     title="WrapReadyAI API",
     description="Artwork Prep for Wrap Shops",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
@@ -29,14 +41,6 @@ app.include_router(upload.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(review.router, prefix="/api")
-
-
-@app.on_event("startup")
-def startup():
-    os.makedirs("./storage/originals", exist_ok=True)
-    os.makedirs("./storage/outputs", exist_ok=True)
-    os.makedirs("./storage/previews", exist_ok=True)
-    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/api/health")

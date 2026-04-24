@@ -9,6 +9,7 @@ def run_analysis(job_id: str):
     from models import Job, JobAnalysis
     from services.analysis_engine import analyze_image
     db = SessionLocal()
+    job = None
     try:
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
@@ -22,8 +23,7 @@ def run_analysis(job_id: str):
         db.commit()
         return {"status": "analyzed", "job_id": job_id}
     except Exception as e:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if job:
+        if job is not None:
             job.status = "failed"
             db.commit()
         return {"error": str(e)}
@@ -37,6 +37,7 @@ def run_processing(job_id: str):
     from models import Job, JobOutput
     from services.pipeline import run_pipeline
     db = SessionLocal()
+    job = None
     try:
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
@@ -51,8 +52,7 @@ def run_processing(job_id: str):
         db.commit()
         return {"status": "completed", "job_id": job_id}
     except Exception as e:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if job:
+        if job is not None:
             job.status = "failed"
             db.commit()
         return {"error": str(e)}

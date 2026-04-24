@@ -1,6 +1,5 @@
 import os
 import uuid
-import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -20,9 +19,9 @@ def run_analysis_sync(job_id: str):
     from database import SessionLocal
     from models import Job, JobAnalysis
     from services.analysis_engine import analyze_image
-    from storage import get_job_dir
 
     db = SessionLocal()
+    job = None
     try:
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
@@ -50,9 +49,8 @@ def run_analysis_sync(job_id: str):
 
         job.status = "analyzed"
         db.commit()
-    except Exception as e:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if job:
+    except Exception:
+        if job is not None:
             job.status = "failed"
             db.commit()
     finally:

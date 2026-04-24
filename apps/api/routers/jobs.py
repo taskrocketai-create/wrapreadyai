@@ -54,6 +54,7 @@ def run_processing_sync(job_id: str):
     from services.pipeline import run_pipeline
 
     db = SessionLocal()
+    job = None
     try:
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
@@ -76,9 +77,8 @@ def run_processing_sync(job_id: str):
         job.status = "completed"
         job.current_stage = None
         db.commit()
-    except Exception as e:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if job:
+    except Exception:
+        if job is not None:
             job.status = "failed"
             db.commit()
     finally:
