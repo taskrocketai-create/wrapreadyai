@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+const api = axios.create({ baseURL: `${BASE}/api` })
 
 export interface CheckResult {
   label: string
@@ -58,7 +59,7 @@ export async function rejectJob(jobId: string): Promise<void> {
 
 export function downloadJobFile(jobId: string): void {
   const a = document.createElement('a')
-  a.href = `/api/jobs/${jobId}/download`
+  a.href = `${BASE}/api/jobs/${jobId}/download`
   a.download = ''
   document.body.appendChild(a)
   a.click()
