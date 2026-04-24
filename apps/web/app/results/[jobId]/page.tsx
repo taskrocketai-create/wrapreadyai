@@ -5,7 +5,7 @@ import LogoHeader from "@/components/LogoHeader";
 import StatusBadge from "@/components/StatusBadge";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import DownloadPanel from "@/components/DownloadPanel";
-import { getJob, getJobOutputs } from "@/lib/api";
+import { getJob, getJobOutputs, API_BASE } from "@/lib/api";
 
 export default function ResultsPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -15,7 +15,6 @@ export default function ResultsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [outputs, setOutputs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     const fetchData = async () => {

@@ -5,7 +5,7 @@ import LogoHeader from "@/components/LogoHeader";
 import StatusBadge from "@/components/StatusBadge";
 import ReviewControls from "@/components/ReviewControls";
 import AnalysisPanel from "@/components/AnalysisPanel";
-import { getJob, getAnalysis } from "@/lib/api";
+import { getJob, getAnalysis, API_BASE } from "@/lib/api";
 
 export default function ReviewPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -14,7 +14,6 @@ export default function ReviewPage() {
   const [job, setJob] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [analysis, setAnalysis] = useState<any>(null);
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     const fetchData = async () => {
