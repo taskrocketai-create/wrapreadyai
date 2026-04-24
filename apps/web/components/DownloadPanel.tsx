@@ -1,5 +1,5 @@
+import { API_BASE } from "@/lib/api";
 interface DownloadPanelProps { jobId: string; outputs: Array<{ output_type: string; file_size: number; width_px: number; height_px: number }>; }
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export default function DownloadPanel({ jobId, outputs }: DownloadPanelProps) {
   const types = ["png", "tiff", "pdf", "svg"];
   return (

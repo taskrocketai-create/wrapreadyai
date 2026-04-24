@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { uploadFile } from "@/lib/api";
 
 interface UploadCardProps {
   targetWidthFt: number;
@@ -49,10 +50,7 @@ export default function UploadCard({ targetWidthFt, targetWidthIn, targetHeightF
       formData.append("target_width_in", String(totalWidthIn));
       formData.append("target_height_in", String(totalHeightIn || totalWidthIn * 0.5));
       formData.append("use_type", useType);
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: formData });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const data = await uploadFile(formData);
       router.push(`/analysis/${data.job_id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Upload failed.");

@@ -62,7 +62,7 @@ docker-compose up --build
 ```bash
 cd apps/web
 npm install
-cp .env.local.example .env.local
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL if backend is not on port 8000
 npm run dev
 ```
 
@@ -102,6 +102,8 @@ uvicorn main:app --reload --port 8000
 
 ## Environment Variables
 
+### Backend (`apps/api`)
+
 ```env
 DATABASE_URL=sqlite:///./storage/wrapready.db
 REDIS_URL=redis://localhost:6379/0
@@ -110,6 +112,19 @@ MAX_UPLOAD_SIZE_MB=50
 TARGET_DPI=120
 CORS_ORIGINS=http://localhost:3000
 ```
+
+### Frontend (`apps/web`)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_API_URL` | Base URL of the backend API | `http://localhost:8000` |
+
+**Production deployment (e.g. Vercel):**
+1. Go to **Settings → Environment Variables** in your Vercel project.
+2. Add `NEXT_PUBLIC_API_URL` = `https://<your-backend-domain>` (Production environment).
+3. Redeploy the frontend.
+
+The frontend uses Next.js [rewrites](https://nextjs.org/docs/app/api-reference/config/next-config-js/rewrites) to proxy all `/api/*` requests to the backend, so no CORS issues and no hardcoded backend URLs in the browser bundle.
 
 ## License
 
