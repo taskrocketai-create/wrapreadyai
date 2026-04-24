@@ -49,7 +49,7 @@ export default function UploadCard({ targetWidthFt, targetWidthIn, targetHeightF
       formData.append("target_width_in", String(totalWidthIn));
       formData.append("target_height_in", String(totalHeightIn || totalWidthIn * 0.5));
       formData.append("use_type", useType);
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
       const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: formData });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
