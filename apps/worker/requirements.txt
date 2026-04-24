@@ -1,0 +1,8 @@
+celery==5.3.4
+redis==5.0.1
+sqlalchemy==2.0.25
+pillow==12.2.0
+opencv-python-headless==4.9.0.80
+numpy==1.26.3
+pytesseract==0.3.10
+python-dotenv==1.0.0

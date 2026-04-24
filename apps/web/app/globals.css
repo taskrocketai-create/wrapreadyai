@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-teal: #14B8A6;
+  --color-teal-dark: #0F766E;
+  --color-brand-black: #0B0F14;
+  --color-brand-dark: #1F2937;
+  --color-brand-light: #E5E7EB;
+  --color-brand-muted: #6B7280;
+  --font-inter: "Inter", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { background: #0B0F14; color: #fff; }
