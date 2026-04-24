@@ -2,7 +2,11 @@ from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Foreig
 from sqlalchemy.orm import relationship
 from database import Base
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 
 def gen_uuid():
@@ -13,7 +17,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=gen_uuid)
     email = Column(String, unique=True, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     is_active = Column(Boolean, default=True)
     jobs = relationship("Job", back_populates="user")
 
@@ -30,8 +34,8 @@ class Job(Base):
     target_height_in = Column(Float, default=48.0)
     target_dpi = Column(Integer, default=120)
     current_stage = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     user = relationship("User", back_populates="jobs")
     analysis = relationship("JobAnalysis", back_populates="job", uselist=False)
     outputs = relationship("JobOutput", back_populates="job")
@@ -56,7 +60,7 @@ class JobAnalysis(Base):
     edge_density = Column(Float, default=0.0)
     color_count = Column(Integer, default=0)
     texture_score = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     job = relationship("Job", back_populates="analysis")
 
 
@@ -70,7 +74,7 @@ class JobOutput(Base):
     width_px = Column(Integer, default=0)
     height_px = Column(Integer, default=0)
     is_production_ready = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     job = relationship("Job", back_populates="outputs")
 
 
@@ -85,5 +89,5 @@ class ReviewEvent(Base):
     smoothing_value = Column(Integer, nullable=True)
     texture_value = Column(Integer, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     job = relationship("Job", back_populates="reviews")
