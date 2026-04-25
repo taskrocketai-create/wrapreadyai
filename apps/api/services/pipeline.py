@@ -1,4 +1,7 @@
 import os
+import io
+import time
+import httpx
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -10,6 +13,7 @@ except ImportError:
 
 STORAGE_PATH = os.getenv("STORAGE_PATH", "./storage")
 TARGET_DPI = int(os.getenv("TARGET_DPI", "120"))
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
 
 
 def get_output_dir(job_id: str) -> Path:
@@ -25,51 +29,104 @@ def get_preview_dir(job_id: str) -> Path:
 
 
 def stage_normalize(img: "Image.Image") -> "Image.Image":
-    """Normalize image: convert to RGB and normalize color profile."""
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
     return img
 
 
 def stage_analyze(img: "Image.Image", job_id: str, db: Any) -> "Image.Image":
-    """Analysis stage - analysis was already done; this stage is a no-op in pipeline."""
     return img
 
 
 def stage_upscale(img: "Image.Image", target_width_in: float, target_height_in: float, target_dpi: int) -> "Image.Image":
     """
-    Upscale image to target DPI.
-    TODO: Replace Lanczos with Real-ESRGAN for AI-based upscaling.
+    Upscale using Real-ESRGAN via Replicate API if token is set,
+    otherwise fall back to Lanczos resampling.
     """
     target_w_px = int(target_width_in * target_dpi)
     target_h_px = int(target_height_in * target_dpi)
+
+    if REPLICATE_API_TOKEN:
+        try:
+            import base64
+
+            # Convert image to base64
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            data_uri = f"data:image/png;base64,{b64}"
+
+            headers = {
+                "Authorization": f"Bearer {REPLICATE_API_TOKEN}",
+                "Content-Type": "application/json",
+                "Prefer": "wait",
+            }
+
+            # Determine scale factor needed
+            current_w, current_h = img.size
+            scale = max(target_w_px / current_w, target_h_px / current_h)
+            # Real-ESRGAN supports scale 2 or 4
+            esrgan_scale = 4 if scale > 2 else 2
+
+            payload = {
+                "version": "f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa",
+                "input": {
+                    "image": data_uri,
+                    "scale": esrgan_scale,
+                    "face_enhance": False,
+                },
+            }
+
+            with httpx.Client(timeout=120) as client:
+                response = client.post(
+                    "https://api.replicate.com/v1/predictions",
+                    headers=headers,
+                    json=payload,
+                )
+                result = response.json()
+
+                # Poll if not done yet
+                if result.get("status") not in ("succeeded", "failed"):
+                    prediction_id = result["id"]
+                    for _ in range(60):
+                        time.sleep(3)
+                        poll = client.get(
+                            f"https://api.replicate.com/v1/predictions/{prediction_id}",
+                            headers=headers,
+                        )
+                        result = poll.json()
+                        if result.get("status") in ("succeeded", "failed"):
+                            break
+
+                if result.get("status") == "succeeded":
+                    output_url = result["output"]
+                    img_response = client.get(output_url)
+                    upscaled = Image.open(io.BytesIO(img_response.content)).convert("RGB")
+
+                    # Final resize to exact target if needed
+                    if upscaled.width < target_w_px or upscaled.height < target_h_px:
+                        upscaled = upscaled.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
+
+                    return upscaled
+
+        except Exception as e:
+            print(f"Replicate upscale failed, falling back to Lanczos: {e}")
+
+    # Fallback: Lanczos
     if img.width < target_w_px or img.height < target_h_px:
         img = img.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
     return img
 
 
 def stage_segment(img: "Image.Image") -> "Image.Image":
-    """
-    Segment image layers.
-    TODO: Implement AI segmentation (e.g., SAM - Segment Anything Model).
-    """
     return img
 
 
 def stage_text_reconstruct(img: "Image.Image") -> "Image.Image":
-    """
-    Reconstruct text elements for crisp rendering.
-    TODO: Implement text layer extraction and reconstruction.
-    """
     return img
 
 
 def stage_vectorize(img: "Image.Image", job_id: str) -> str:
-    """
-    Vectorize image to SVG.
-    TODO: Integrate Potrace or vtracer for real vectorization.
-    Returns path to SVG file.
-    """
     from services.vectorizer import vectorize_image
     out_dir = get_output_dir(job_id)
     tmp_path = str(out_dir / "temp_vectorize.png")
@@ -86,7 +143,6 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> str:
 
 
 def stage_texture(img: "Image.Image") -> "Image.Image":
-    """Extract and enhance texture details."""
     if HAS_PIL:
         enhancer = ImageEnhance.Sharpness(img)
         img = enhancer.enhance(1.5)
@@ -94,22 +150,19 @@ def stage_texture(img: "Image.Image") -> "Image.Image":
 
 
 def stage_recompose(img: "Image.Image") -> "Image.Image":
-    """Recompose all processed layers back into final image."""
     return img
 
 
 def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[str, Any]]:
-    """Export final image to PNG, TIFF, PDF formats."""
     out_dir = get_output_dir(job_id)
     outputs = []
 
     png_path = str(out_dir / "output.png")
     img.save(png_path, "PNG", dpi=(target_dpi, target_dpi))
-    png_size = os.path.getsize(png_path)
     outputs.append({
         "output_type": "png",
         "file_path": png_path,
-        "file_size": png_size,
+        "file_size": os.path.getsize(png_path),
         "width_px": img.width,
         "height_px": img.height,
         "is_production_ready": True,
@@ -117,11 +170,10 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
 
     tiff_path = str(out_dir / "output.tiff")
     img.save(tiff_path, "TIFF", dpi=(target_dpi, target_dpi))
-    tiff_size = os.path.getsize(tiff_path)
     outputs.append({
         "output_type": "tiff",
         "file_path": tiff_path,
-        "file_size": tiff_size,
+        "file_size": os.path.getsize(tiff_path),
         "width_px": img.width,
         "height_px": img.height,
         "is_production_ready": True,
@@ -131,11 +183,10 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
         pdf_path = str(out_dir / "output.pdf")
         img_rgb = img.convert("RGB") if img.mode == "RGBA" else img
         img_rgb.save(pdf_path, "PDF", resolution=target_dpi)
-        pdf_size = os.path.getsize(pdf_path)
         outputs.append({
             "output_type": "pdf",
             "file_path": pdf_path,
-            "file_size": pdf_size,
+            "file_size": os.path.getsize(pdf_path),
             "width_px": img.width,
             "height_px": img.height,
             "is_production_ready": True,
@@ -147,16 +198,13 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
 
 
 def stage_validate(img: "Image.Image", outputs: List[Dict[str, Any]], target_dpi: int) -> List[Dict[str, Any]]:
-    """Validate outputs meet production requirements."""
-    validated = []
     for output in outputs:
         output["is_production_ready"] = (
             output["width_px"] > 0 and
             output["height_px"] > 0 and
             output["file_size"] > 0
         )
-        validated.append(output)
-    return validated
+    return outputs
 
 
 def run_pipeline(
@@ -167,7 +215,6 @@ def run_pipeline(
     target_dpi: int,
     db: Any,
 ) -> List[Dict[str, Any]]:
-    """Run the full 10-stage processing pipeline."""
     from models import Job
 
     def update_stage(stage: str):
@@ -198,11 +245,10 @@ def run_pipeline(
 
     update_stage("vectorize")
     svg_path = stage_vectorize(img, job_id)
-    svg_size = os.path.getsize(svg_path)
     svg_output = {
         "output_type": "svg",
         "file_path": svg_path,
-        "file_size": svg_size,
+        "file_size": os.path.getsize(svg_path),
         "width_px": img.width,
         "height_px": img.height,
         "is_production_ready": False,
