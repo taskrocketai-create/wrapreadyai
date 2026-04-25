@@ -1,8 +1,10 @@
 import os
 import uuid
+import io
 from pathlib import Path
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
+from PIL import Image
 from database import get_db
 from models import Job
 from schemas import UploadResponse
@@ -12,6 +14,19 @@ router = APIRouter()
 
 MAX_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_DIMENSION = 3000
+
+
+def resize_if_needed(content: bytes) -> bytes:
+    """Cap image to MAX_DIMENSION on longest side to reduce memory during processing."""
+    img = Image.open(io.BytesIO(content))
+    fmt = img.format or "PNG"
+    if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
+        img.thumbnail((MAX_DIMENSION, MAX_DIMENSION), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format=fmt)
+        return buf.getvalue()
+    return content
 
 
 def run_analysis_sync(job_id: str):
@@ -72,6 +87,8 @@ async def upload_file(
     content = await file.read()
     if len(content) > MAX_SIZE_MB * 1024 * 1024:
         raise HTTPException(400, f"File must be under {MAX_SIZE_MB}MB.")
+
+    content = resize_if_needed(content)
 
     job_id = str(uuid.uuid4())
     filename = file.filename or f"{job_id}.jpg"
