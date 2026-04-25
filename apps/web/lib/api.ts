@@ -1,7 +1,9 @@
-// All requests use relative /api/* paths. Next.js rewrites (next.config.ts)
-// proxy them to the configured backend (NEXT_PUBLIC_API_URL).
-// For local dev the default is http://localhost:8000.
-export const API_BASE = "";
+// When NEXT_PUBLIC_API_URL is set (production), the browser calls the backend
+// directly, avoiding Vercel's server-side rewrite proxy (which blocks requests
+// to private hostnames with DNS_HOSTNAME_RESOLVED_PRIVATE).
+// When unset (local dev), relative /api/* paths are used and Next.js rewrites
+// them to http://localhost:8000 via the rewrite in next.config.ts.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, init).catch((err: Error) => {
