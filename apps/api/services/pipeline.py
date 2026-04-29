@@ -150,45 +150,61 @@ def stage_text_reconstruct(img: "Image.Image") -> "Image.Image":
 
 def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     """
-    Produce EPS and AI vector outputs from the processed image.
+    Produce EPS and AI vector outputs.
 
-    EPS  — flat PostScript, opens in every RIP (Roland, Mimaki, Caldera, Flexi).
-    AI   — PDF with Optional Content Group layers + Illustrator metadata;
-           opens in Illustrator / CorelDRAW with editable color layers.
+    EPS — built by embedding each color-layer PNG into a composite SVG then
+          converting via cairosvg. Avoids the compound-path holes that vtracer
+          produces when converting the whole image at once.
 
-    Both are derived from the layered SVG so colors are consistent.
-    Work image is capped at 1024 px so vtracer stays fast.
+    AI  — the layered PDF from export_layers, saved at PDF 1.4 with
+          Illustrator creator metadata so Illustrator opens it natively.
     """
-    from services.vectorizer import vectorize_image
     from services.export_layers import _extract_layers, _build_layered_pdf
 
     out_dir = get_output_dir(job_id)
     outputs: List[Dict[str, Any]] = []
 
-    # Downscale for vtracer
-    import tempfile
+    # Work at ≤1024px for speed; color separation doesn't need print resolution
     vec_img = img.copy()
     MAX_VEC_DIM = 1024
     if vec_img.width > MAX_VEC_DIM or vec_img.height > MAX_VEC_DIM:
         vec_img.thumbnail((MAX_VEC_DIM, MAX_VEC_DIM), Image.Resampling.LANCZOS)
 
-    tmp_png = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    vec_img.convert("RGB").save(tmp_png.name, "PNG")
-    tmp_png.close()
+    layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.002)
+    w, h = vec_img.size
 
+    # ── EPS ──────────────────────────────────────────────────────────────────
+    # Embed each RGBA layer as a base64 PNG inside a composite SVG, then let
+    # cairosvg render that to PostScript. Simple raster images in SVG produce
+    # clean EPS with no compound-path artefacts.
     try:
-        svg_content = vectorize_image(tmp_png.name)
-    finally:
-        try:
-            os.remove(tmp_png.name)
-        except OSError:
-            pass
-
-    # --- EPS via cairosvg ---
-    try:
+        import base64
         import cairosvg
-        tmp_svg = tempfile.NamedTemporaryFile(suffix=".svg", delete=False, mode="w", encoding="utf-8")
-        tmp_svg.write(svg_content)
+        import tempfile
+
+        svg_parts = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            f'<svg xmlns="http://www.w3.org/2000/svg"',
+            f'     xmlns:xlink="http://www.w3.org/1999/xlink"',
+            f'     width="{w}" height="{h}" viewBox="0 0 {w} {h}">',
+        ]
+
+        for layer in layers:
+            buf = io.BytesIO()
+            layer["rgba"].save(buf, "PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            svg_parts.append(
+                f'  <image width="{w}" height="{h}" '
+                f'xlink:href="data:image/png;base64,{b64}"/>'
+            )
+
+        svg_parts.append("</svg>")
+        composite_svg = "\n".join(svg_parts)
+
+        tmp_svg = tempfile.NamedTemporaryFile(
+            suffix=".svg", delete=False, mode="w", encoding="utf-8"
+        )
+        tmp_svg.write(composite_svg)
         tmp_svg.close()
 
         eps_path = str(out_dir / "output.eps")
@@ -210,20 +226,21 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     except Exception as e:
         print(f"[pipeline] EPS export failed: {e}")
 
-    # --- AI: layered PDF with Illustrator metadata ---
+    # ── AI ────────────────────────────────────────────────────────────────────
+    # Build layered PDF (OCG layers) and save as PDF 1.4 with Illustrator
+    # creator metadata. Illustrator opens any valid PDF 1.4 with OCGs as a
+    # native .ai file with editable layers.
     try:
-        import io as _io
         import pikepdf
 
-        layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.002)
         pdf_bytes = _build_layered_pdf(vec_img, layers)
+        pdf = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
 
-        pdf = pikepdf.Pdf.open(_io.BytesIO(pdf_bytes))
         with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
             meta["xmp:CreatorTool"] = "Adobe Illustrator 28.0"
 
         ai_path = str(out_dir / "output.ai")
-        pdf.save(ai_path)
+        pdf.save(ai_path, min_version="1.4")
 
         outputs.append({
             "output_type": "ai",
@@ -235,6 +252,8 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
         })
     except Exception as e:
         print(f"[pipeline] AI export failed: {e}")
+
+    return outputs
 
     return outputs
 
