@@ -20,13 +20,12 @@ const FORMAT_META: Record<string, { icon: string; label: string; desc: string; h
     highlight: true,
   },
   png: { icon: "🖼️", label: "PNG", desc: "Full-res flattened image" },
-  tiff: { icon: "📁", label: "TIFF", desc: "LZW compressed, print-ready" },
   pdf: { icon: "📄", label: "PDF", desc: "Single-page print PDF" },
   eps: { icon: "✏️", label: "EPS", desc: "Vector — opens in all RIP software (Roland, Mimaki, Caldera, Flexi)" },
   ai:  { icon: "🎨", label: "AI", desc: "Adobe Illustrator — editable color layers" },
 };
 
-const FORMAT_ORDER = ["zip", "png", "tiff", "pdf", "eps", "ai"];
+const FORMAT_ORDER = ["zip", "png", "pdf", "eps", "ai"];
 
 export default function DownloadPanel({ jobId, outputs }: DownloadPanelProps) {
   return (
