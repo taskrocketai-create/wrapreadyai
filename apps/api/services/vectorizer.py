@@ -1,11 +1,20 @@
 """
-Real raster-to-SVG vectorizer using vtracer.
-Drop this file in at apps/api/services/vectorizer.py
+Raster-to-SVG vectorizer with proper color-layer separation.
+
+Each dominant color in the image becomes its own named <g> layer in the SVG,
+compatible with Inkscape and Adobe Illustrator.  Wrap shops can open the file,
+toggle layers on/off, recolor, resize, and reposition elements independently.
+
+Drop this file at:  apps/api/services/vectorizer.py
+Also add to requirements.txt:  vtracer==0.6.12
 """
 
+from __future__ import annotations
+
 import os
+import re
 import tempfile
-from pathlib import Path
+from typing import List
 
 try:
     import vtracer
@@ -19,140 +28,233 @@ try:
 except ImportError:
     HAS_PIL = False
 
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
-def _preprocess_for_vectorization(image_path: str) -> str:
-    """
-    Optionally downscale the image before vectorization to keep SVG complexity
-    manageable. Returns a path to the (possibly resized) image.
-    If no resizing is needed the original path is returned unchanged.
-    """
-    if not HAS_PIL:
-        return image_path
 
-    MAX_DIM = 1024  # cap longest side – vtracer works best on medium-res inputs
-
-    img = Image.open(image_path).convert("RGB")
-    w, h = img.size
-
-    if w <= MAX_DIM and h <= MAX_DIM:
-        return image_path  # nothing to do
-
-    # Resize while keeping aspect ratio
-    scale = MAX_DIM / max(w, h)
-    new_w, new_h = int(w * scale), int(h * scale)
-    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    img.save(tmp.name, "PNG")
-    return tmp.name
-
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def vectorize_image(
     image_path: str,
-    colormode: str = "color",          # "color" | "binary"
-    hierarchical: str = "stacked",     # "stacked" | "cutout"
-    mode: str = "spline",              # "spline" | "polygon" | "none"
-    filter_speckle: int = 4,           # remove noise patches smaller than N px
-    color_precision: int = 8,          # number of significant bits for colour
-    layer_difference: int = 16,        # colour-layer merging threshold
-    corner_threshold: int = 60,        # corner sharpness in degrees
-    length_threshold: float = 4.0,     # min segment length before simplification
-    max_iterations: int = 10,
-    splice_threshold: int = 45,
-    path_precision: int = 8,           # decimal places in SVG path data
+    n_colors: int = 16,
+    min_pixel_ratio: float = 0.002,   # ignore regions < 0.2 % of total pixels
+    filter_speckle: int = 4,
+    corner_threshold: int = 60,
+    length_threshold: float = 4.0,
+    path_precision: int = 3,
 ) -> str:
     """
-    Convert a raster image to an SVG string using vtracer.
+    Convert a raster image to a *layered* SVG string.
 
-    Falls back to a meaningful placeholder SVG when vtracer is unavailable
-    (so the rest of the pipeline never breaks).
+    Each dominant color becomes a separate named <g> layer so the file is
+    editable in Inkscape / Illustrator — wrap shops can isolate, recolor,
+    scale and reposition each element independently.
+
+    Falls back to a base64-embedded image SVG when dependencies are missing.
     """
-    if not HAS_VTRACER:
+    if not (HAS_VTRACER and HAS_PIL and HAS_NUMPY):
         return _fallback_svg(image_path)
-
-    preprocessed = _preprocess_for_vectorization(image_path)
-    tmp_path_created = preprocessed != image_path  # did we create a temp file?
-
-    # vtracer writes to a file; use a temp file to capture the output
-    tmp_svg = tempfile.NamedTemporaryFile(suffix=".svg", delete=False)
-    tmp_svg.close()
-
-    try:
-        vtracer.convert_image_to_svg_py(
-            preprocessed,
-            tmp_svg.name,
-            colormode=colormode,
-            hierarchical=hierarchical,
-            mode=mode,
-            filter_speckle=filter_speckle,
-            color_precision=color_precision,
-            layer_difference=layer_difference,
-            corner_threshold=corner_threshold,
-            length_threshold=length_threshold,
-            max_iterations=max_iterations,
-            splice_threshold=splice_threshold,
-            path_precision=path_precision,
-        )
-        with open(tmp_svg.name, "r", encoding="utf-8") as fh:
-            svg_str = fh.read()
-        return svg_str
-    except Exception as exc:
-        print(f"[vectorizer] vtracer failed ({exc}), using fallback SVG")
-        return _fallback_svg(image_path)
-    finally:
-        if os.path.exists(tmp_svg.name):
-            try:
-                os.remove(tmp_svg.name)
-            except OSError:
-                pass
-        if tmp_path_created and os.path.exists(preprocessed):
-            try:
-                os.remove(preprocessed)
-            except OSError:
-                pass
-
-
-def _fallback_svg(image_path: str) -> str:
-    """
-    Return a minimal but valid SVG that embeds the original image as a
-    base64 data-URI so at least *something* renders in the browser.
-    """
-    if not HAS_PIL:
-        return (
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">'
-            '<rect width="400" height="300" fill="#1a1a2e"/>'
-            '<text x="200" y="150" text-anchor="middle" font-size="16" fill="#e94560">'
-            "Vectorization unavailable"
-            "</text>"
-            "</svg>"
-        )
-
-    import base64, io
 
     try:
         img = Image.open(image_path).convert("RGB")
-        img.thumbnail((800, 600), Image.Resampling.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode()
-        w, h = img.size
-        return (
-            f'<?xml version="1.0" encoding="UTF-8"?>'
-            f'<svg xmlns="http://www.w3.org/2000/svg" '
-            f'xmlns:xlink="http://www.w3.org/1999/xlink" '
-            f'width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
-            f'<image width="{w}" height="{h}" '
-            f'xlink:href="data:image/png;base64,{b64}"/>'
-            f"</svg>"
+        img = _cap_size(img, max_dim=1024)
+
+        min_pixels = max(1, int(img.width * img.height * min_pixel_ratio))
+
+        return _build_layered_svg(
+            img,
+            n_colors=n_colors,
+            min_pixels=min_pixels,
+            filter_speckle=filter_speckle,
+            corner_threshold=corner_threshold,
+            length_threshold=length_threshold,
+            path_precision=path_precision,
         )
+    except Exception as exc:
+        print(f"[vectorizer] layered SVG failed ({exc}), using fallback")
+        return _fallback_svg(image_path)
+
+
+# ---------------------------------------------------------------------------
+# Core: color separation + per-layer tracing
+# ---------------------------------------------------------------------------
+
+def _build_layered_svg(
+    img: "Image.Image",
+    n_colors: int,
+    min_pixels: int,
+    filter_speckle: int,
+    corner_threshold: int,
+    length_threshold: float,
+    path_precision: int,
+) -> str:
+    import numpy as np
+
+    w, h = img.size
+
+    # 1. Quantize to N dominant colors
+    quantized = img.quantize(colors=n_colors, method=Image.Quantize.MEDIANCUT)
+    arr = np.array(quantized)          # shape (H, W) — color index per pixel
+    palette = quantized.getpalette()   # flat list [R,G,B, R,G,B, ...]
+
+    unique_idxs, counts = np.unique(arr, return_counts=True)
+    # Largest region first → background drawn at bottom
+    order = np.argsort(-counts)
+
+    # 2. Vectorize each color region separately
+    layer_svgs: List[str] = []
+
+    for rank, pos in enumerate(order):
+        color_idx = unique_idxs[pos]
+        pixel_count = counts[pos]
+
+        if pixel_count < min_pixels:
+            continue
+
+        r = palette[color_idx * 3]
+        g = palette[color_idx * 3 + 1]
+        b = palette[color_idx * 3 + 2]
+        hex_color = f"#{r:02x}{g:02x}{b:02x}"
+
+        layer_id = f"layer-{rank + 1:02d}-{hex_color[1:]}"
+        layer_label = f"{hex_color}  ({pixel_count:,} px)"
+
+        # Binary mask: white where this color, black elsewhere
+        mask_arr = ((arr == color_idx) * 255).astype(np.uint8)
+        mask_img = Image.fromarray(mask_arr, mode="L")
+
+        paths_svg = _trace_mask(
+            mask_img,
+            filter_speckle=filter_speckle,
+            corner_threshold=corner_threshold,
+            length_threshold=length_threshold,
+            path_precision=path_precision,
+        )
+        if not paths_svg:
+            continue
+
+        # vtracer binary mode outputs black fill — replace with actual color
+        paths_svg = re.sub(r'fill="[^"]*"', f'fill="{hex_color}"', paths_svg)
+
+        layer_svgs.append(
+            f'  <g id="{layer_id}"\n'
+            f'     inkscape:label="{layer_label}"\n'
+            f'     inkscape:groupmode="layer">\n'
+            f"{paths_svg}\n"
+            f"  </g>"
+        )
+
+    if not layer_svgs:
+        return _fallback_svg_from_img(img, w, h)
+
+    # 3. Assemble final SVG with Inkscape layer metadata
+    return "\n".join([
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<svg version="1.1"',
+        '     xmlns="http://www.w3.org/2000/svg"',
+        '     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"',
+        '     xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd"',
+        f'     width="{w}" height="{h}"',
+        f'     viewBox="0 0 {w} {h}">',
+        '  <sodipodi:namedview inkscape:document-units="px"/>',
+        *layer_svgs,
+        "</svg>",
+    ])
+
+
+def _trace_mask(
+    mask_img: "Image.Image",
+    filter_speckle: int,
+    corner_threshold: int,
+    length_threshold: float,
+    path_precision: int,
+) -> str:
+    """Trace a binary mask through vtracer; return the raw <path .../> elements."""
+    tmp_in = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    tmp_out = tempfile.NamedTemporaryFile(suffix=".svg", delete=False)
+    tmp_in.close()
+    tmp_out.close()
+
+    try:
+        mask_img.save(tmp_in.name)
+        vtracer.convert_image_to_svg_py(
+            tmp_in.name,
+            tmp_out.name,
+            colormode="binary",
+            mode="spline",
+            filter_speckle=filter_speckle,
+            corner_threshold=corner_threshold,
+            length_threshold=length_threshold,
+            path_precision=path_precision,
+        )
+        svg_raw = open(tmp_out.name, encoding="utf-8").read()
+    finally:
+        _rm(tmp_in.name)
+        _rm(tmp_out.name)
+
+    paths = re.findall(r"<path[^>]*/?>", svg_raw, re.DOTALL)
+    return "\n".join("    " + p for p in paths)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _cap_size(img: "Image.Image", max_dim: int) -> "Image.Image":
+    if img.width <= max_dim and img.height <= max_dim:
+        return img
+    img = img.copy()
+    img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+    return img
+
+
+def _rm(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _fallback_svg(image_path: str) -> str:
+    if not HAS_PIL:
+        return _minimal_error_svg()
+    try:
+        img = Image.open(image_path).convert("RGB")
+        img = _cap_size(img, 800)
+        return _fallback_svg_from_img(img, img.width, img.height)
     except Exception:
-        return (
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">'
-            '<rect width="400" height="300" fill="#111"/>'
-            '<text x="200" y="150" text-anchor="middle" font-size="14" fill="#aaa">'
-            "Image unavailable"
-            "</text>"
-            "</svg>"
-        )
+        return _minimal_error_svg()
+
+
+def _fallback_svg_from_img(img: "Image.Image", w: int, h: int) -> str:
+    import base64
+    import io as _io
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return (
+        f'<?xml version="1.0" encoding="UTF-8"?>'
+        f'<svg xmlns="http://www.w3.org/2000/svg"'
+        f' xmlns:xlink="http://www.w3.org/1999/xlink"'
+        f' width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
+        f'<image width="{w}" height="{h}"'
+        f' xlink:href="data:image/png;base64,{b64}"/>'
+        f"</svg>"
+    )
+
+
+def _minimal_error_svg() -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">'
+        '<rect width="400" height="200" fill="#111"/>'
+        '<text x="200" y="105" text-anchor="middle" font-size="14" fill="#aaa">'
+        "Vectorization unavailable — install vtracer"
+        "</text>"
+        "</svg>"
+    )
