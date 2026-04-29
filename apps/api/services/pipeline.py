@@ -38,22 +38,47 @@ def stage_analyze(img: "Image.Image", job_id: str, db: Any) -> "Image.Image":
     return img
 
 
-def stage_upscale(img: "Image.Image", target_width_in: float, target_height_in: float, target_dpi: int) -> "Image.Image":
+def stage_upscale(
+    img: "Image.Image",
+    target_width_in: float,
+    target_height_in: float,
+    target_dpi: int,
+) -> "Image.Image":
     """
-    Upscale using Real-ESRGAN via Replicate API if token is set,
-    otherwise fall back to Lanczos resampling.
+    Upscale to meet target DPI while preserving the original aspect ratio.
+
+    Strategy:
+    - Compute the pixel dimensions required to hit target_dpi at the
+      requested print size.
+    - Find the scale factor needed on each axis; use the *smaller* one so
+      the image fits within the print canvas without distortion.
+    - Only upscale, never downscale (the image is already big enough if
+      both axes already exceed target resolution).
     """
     target_w_px = int(target_width_in * target_dpi)
     target_h_px = int(target_height_in * target_dpi)
+
+    cur_w, cur_h = img.size
+
+    # Scale factor required on each axis to reach target resolution
+    scale_w = target_w_px / cur_w
+    scale_h = target_h_px / cur_h
+
+    # Use the smaller scale so the image fits within the canvas;
+    # this preserves aspect ratio.
+    scale = min(scale_w, scale_h)
+
+    if scale <= 1.0:
+        # Already meets or exceeds target DPI on the constraining axis
+        return img
 
     if REPLICATE_API_TOKEN:
         try:
             import base64
 
-            # Convert image to base64
             buf = io.BytesIO()
             img.convert("RGB").save(buf, format="PNG")
-            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            b64 = base64.b64encode(buf.getvalue()).decode()
             data_uri = f"data:image/png;base64,{b64}"
 
             headers = {
@@ -62,10 +87,6 @@ def stage_upscale(img: "Image.Image", target_width_in: float, target_height_in: 
                 "Prefer": "wait",
             }
 
-            # Determine scale factor needed
-            current_w, current_h = img.size
-            scale = max(target_w_px / current_w, target_h_px / current_h)
-            # Real-ESRGAN supports scale 2 or 4
             esrgan_scale = 4 if scale > 2 else 2
 
             payload = {
@@ -85,7 +106,6 @@ def stage_upscale(img: "Image.Image", target_width_in: float, target_height_in: 
                 )
                 result = response.json()
 
-                # Poll if not done yet
                 if result.get("status") not in ("succeeded", "failed"):
                     prediction_id = result["id"]
                     for _ in range(60):
@@ -103,19 +123,21 @@ def stage_upscale(img: "Image.Image", target_width_in: float, target_height_in: 
                     img_response = client.get(output_url)
                     upscaled = Image.open(io.BytesIO(img_response.content)).convert("RGB")
 
-                    # Final resize to exact target if needed
-                    if upscaled.width < target_w_px or upscaled.height < target_h_px:
-                        upscaled = upscaled.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
+                    # Downscale to exact target if Real-ESRGAN overshot
+                    new_w = int(cur_w * scale)
+                    new_h = int(cur_h * scale)
+                    if upscaled.width > new_w or upscaled.height > new_h:
+                        upscaled = upscaled.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
                     return upscaled
 
         except Exception as e:
             print(f"Replicate upscale failed, falling back to Lanczos: {e}")
 
-    # Fallback: Lanczos
-    if img.width < target_w_px or img.height < target_h_px:
-        img = img.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
-    return img
+    # Fallback: Lanczos — scale preserving aspect ratio
+    new_w = int(cur_w * scale)
+    new_h = int(cur_h * scale)
+    return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
 
 def stage_segment(img: "Image.Image") -> "Image.Image":
@@ -127,18 +149,41 @@ def stage_text_reconstruct(img: "Image.Image") -> "Image.Image":
 
 
 def stage_vectorize(img: "Image.Image", job_id: str) -> str:
+    """
+    Vectorize the processed image to SVG.
+
+    We work from a reasonably sized copy of the image (≤ 1024px on the
+    long side) because vtracer's complexity and output file size scale
+    with pixel count — passing a 14 400 px monster in would produce a
+    multi-MB SVG and take forever.
+    """
     from services.vectorizer import vectorize_image
+
     out_dir = get_output_dir(job_id)
-    tmp_path = str(out_dir / "temp_vectorize.png")
-    img.save(tmp_path, "PNG")
-    svg_content = vectorize_image(tmp_path)
     svg_path = str(out_dir / "output.svg")
-    with open(svg_path, "w") as f:
-        f.write(svg_content)
+
+    # Write a downscaled PNG for vtracer input
+    import tempfile
+    vec_img = img.copy()
+    MAX_VEC_DIM = 1024
+    if vec_img.width > MAX_VEC_DIM or vec_img.height > MAX_VEC_DIM:
+        vec_img.thumbnail((MAX_VEC_DIM, MAX_VEC_DIM), Image.Resampling.LANCZOS)
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    vec_img.convert("RGB").save(tmp.name, "PNG")
+    tmp.close()
+
     try:
-        os.remove(tmp_path)
-    except Exception:
-        pass
+        svg_content = vectorize_image(tmp.name)
+    finally:
+        try:
+            os.remove(tmp.name)
+        except OSError:
+            pass
+
+    with open(svg_path, "w", encoding="utf-8") as f:
+        f.write(svg_content)
+
     return svg_path
 
 
@@ -197,12 +242,16 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
     return outputs
 
 
-def stage_validate(img: "Image.Image", outputs: List[Dict[str, Any]], target_dpi: int) -> List[Dict[str, Any]]:
+def stage_validate(
+    img: "Image.Image",
+    outputs: List[Dict[str, Any]],
+    target_dpi: int,
+) -> List[Dict[str, Any]]:
     for output in outputs:
         output["is_production_ready"] = (
-            output["width_px"] > 0 and
-            output["height_px"] > 0 and
-            output["file_size"] > 0
+            output["width_px"] > 0
+            and output["height_px"] > 0
+            and output["file_size"] > 0
         )
     return outputs
 
@@ -251,7 +300,7 @@ def run_pipeline(
         "file_size": os.path.getsize(svg_path),
         "width_px": img.width,
         "height_px": img.height,
-        "is_production_ready": False,
+        "is_production_ready": False,  # SVG is a reference, not production-ready on its own
     }
 
     update_stage("texture")
