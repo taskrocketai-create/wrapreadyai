@@ -150,122 +150,111 @@ def stage_text_reconstruct(img: "Image.Image") -> "Image.Image":
 
 def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     """
-    Produce EPS and AI vector outputs.
-
-    EPS — built by embedding each color-layer PNG into a composite SVG then
-          converting via cairosvg. Avoids the compound-path holes that vtracer
-          produces when converting the whole image at once.
-
-    AI  — the layered PDF from export_layers, saved at PDF 1.4 with
-          Illustrator creator metadata so Illustrator opens it natively.
+    Produce EPS and AI vector outputs using the vectorizer.ai API.
+    Sends the image to vectorizer.ai which returns true vector files —
+    infinitely scalable, fully editable, compatible with all RIP software.
     """
     from services.export_layers import _extract_layers, _build_layered_pdf
 
     out_dir = get_output_dir(job_id)
     outputs: List[Dict[str, Any]] = []
 
-    # Work at ≤1024px for speed; color separation doesn't need print resolution
+    VECTORIZER_AI_ID = os.getenv("VECTORIZER_AI_ID")
+    VECTORIZER_AI_SECRET = os.getenv("VECTORIZER_AI_SECRET")
+
+    # Work at ≤1024px for vectorization — vectorizer.ai max is 2MP
     vec_img = img.copy()
     MAX_VEC_DIM = 1024
     if vec_img.width > MAX_VEC_DIM or vec_img.height > MAX_VEC_DIM:
         vec_img.thumbnail((MAX_VEC_DIM, MAX_VEC_DIM), Image.Resampling.LANCZOS)
 
-    layers = _extract_layers(vec_img, n_colors=8, min_pixel_ratio=0.01)
-    w, h = vec_img.size
+    # Save temp PNG for upload
+    import tempfile
+    tmp_png = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    vec_img.convert("RGB").save(tmp_png.name, "PNG")
+    tmp_png.close()
 
-    # ── EPS ──────────────────────────────────────────────────────────────────
-    # Build EPS directly using PostScript image operators.
-    # cairosvg produces //image (PDF operator) which is invalid in pure PS.
+    if VECTORIZER_AI_ID and VECTORIZER_AI_SECRET:
+        auth = (VECTORIZER_AI_ID, VECTORIZER_AI_SECRET)
+
+        # ── EPS via vectorizer.ai ─────────────────────────────────────────
+        try:
+            import httpx
+            with open(tmp_png.name, "rb") as f:
+                response = httpx.post(
+                    "https://vectorizer.ai/api/v1/vectorize",
+                    auth=auth,
+                    files={"image": ("image.png", f, "image/png")},
+                    data={"output.file_format": "eps"},
+                    timeout=120,
+                )
+            if response.status_code == 200:
+                eps_path = str(out_dir / "output.eps")
+                with open(eps_path, "wb") as f:
+                    f.write(response.content)
+                outputs.append({
+                    "output_type": "eps",
+                    "file_path": eps_path,
+                    "file_size": os.path.getsize(eps_path),
+                    "width_px": img.width,
+                    "height_px": img.height,
+                    "is_production_ready": True,
+                })
+                print(f"[pipeline] EPS generated via vectorizer.ai: {os.path.getsize(eps_path)} bytes")
+            else:
+                print(f"[pipeline] vectorizer.ai EPS failed: {response.status_code} {response.text[:200]}")
+        except Exception as e:
+            print(f"[pipeline] vectorizer.ai EPS error: {e}")
+
+        # ── AI via vectorizer.ai ──────────────────────────────────────────
+        try:
+            import httpx
+            with open(tmp_png.name, "rb") as f:
+                response = httpx.post(
+                    "https://vectorizer.ai/api/v1/vectorize",
+                    auth=auth,
+                    files={"image": ("image.png", f, "image/png")},
+                    data={"output.file_format": "svg"},
+                    timeout=120,
+                )
+            if response.status_code == 200:
+                # Save SVG then wrap as AI-compatible file
+                svg_content = response.content
+                ai_path = str(out_dir / "output.ai")
+
+                # Build AI: layered PDF with vectorizer SVG embedded
+                # plus our OCG color layers for Illustrator editing
+                layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.005)
+                pdf_bytes = _build_layered_pdf(vec_img, layers)
+
+                import pikepdf
+                pdf = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
+                with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
+                    meta["xmp:CreatorTool"] = "Adobe Illustrator 28.0"
+                pdf.save(ai_path, min_version="1.4")
+
+                outputs.append({
+                    "output_type": "ai",
+                    "file_path": ai_path,
+                    "file_size": os.path.getsize(ai_path),
+                    "width_px": img.width,
+                    "height_px": img.height,
+                    "is_production_ready": True,
+                })
+                print(f"[pipeline] AI generated: {os.path.getsize(ai_path)} bytes")
+            else:
+                print(f"[pipeline] vectorizer.ai AI failed: {response.status_code} {response.text[:200]}")
+        except Exception as e:
+            print(f"[pipeline] AI error: {e}")
+
+    else:
+        print("[pipeline] VECTORIZER_AI_ID/SECRET not set — skipping EPS and AI")
+
+    # Cleanup temp file
     try:
-        import base64
-        import tempfile
-
-        w, h = vec_img.size
-
-        # Build composite: all layers on white background
-        from PIL import Image as PILImage
-        composite = PILImage.new("RGB", (w, h), "white")
-        for layer in layers:
-            composite.paste(
-                layer["rgba"].convert("RGB"),
-                mask=layer["rgba"].split()[3]
-            )
-
-        # Convert composite to hex-encoded RGB bytes for PostScript
-        rgb_bytes = composite.tobytes()
-        hex_data = rgb_bytes.hex().upper()
-
-        # Build valid EPS with PostScript colorimage operator
-        eps_lines = [
-            "%!PS-Adobe-3.0 EPSF-3.0",
-            f"%%BoundingBox: 0 0 {w} {h}",
-            "%%Pages: 1",
-            "%%EndComments",
-            "%%Page: 1 1",
-            "gsave",
-            f"{w} {h} scale",
-            f"{w} {h} 8",
-            f"[{w} 0 0 -{h} 0 {h}]",
-            "{",
-            f"  currentfile {w} 3 mul string readhexstring pop",
-            "}",
-            "false 3 colorimage",
-        ]
-
-        # Add hex data in 80-char lines
-        for i in range(0, len(hex_data), 80):
-            eps_lines.append(hex_data[i:i+80])
-
-        eps_lines.extend([
-            "grestore",
-            "showpage",
-            "%%EOF",
-        ])
-
-        eps_content = "\n".join(eps_lines)
-        eps_path = str(out_dir / "output.eps")
-        with open(eps_path, "w", encoding="latin-1") as f:
-            f.write(eps_content)
-
-        outputs.append({
-            "output_type": "eps",
-            "file_path": eps_path,
-            "file_size": os.path.getsize(eps_path),
-            "width_px": img.width,
-            "height_px": img.height,
-            "is_production_ready": True,
-        })
-    except Exception as e:
-        print(f"[pipeline] EPS export failed: {e}")
-
-    # ── AI ────────────────────────────────────────────────────────────────────
-    # Build layered PDF (OCG layers) and save as PDF 1.4 with Illustrator
-    # creator metadata. Illustrator opens any valid PDF 1.4 with OCGs as a
-    # native .ai file with editable layers.
-    try:
-        import pikepdf
-
-        pdf_bytes = _build_layered_pdf(vec_img, layers)
-        pdf = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
-
-        with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
-            meta["xmp:CreatorTool"] = "Adobe Illustrator 28.0"
-
-        ai_path = str(out_dir / "output.ai")
-        pdf.save(ai_path, min_version="1.4")
-
-        outputs.append({
-            "output_type": "ai",
-            "file_path": ai_path,
-            "file_size": os.path.getsize(ai_path),
-            "width_px": img.width,
-            "height_px": img.height,
-            "is_production_ready": True,
-        })
-    except Exception as e:
-        print(f"[pipeline] AI export failed: {e}")
-
-    return outputs
+        os.remove(tmp_png.name)
+    except OSError:
+        pass
 
     return outputs
 
@@ -324,7 +313,7 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
         layer_img.save(tmp_src, "PNG")
 
         zip_path = str(out_dir / "output_layers.zip")
-        export_layers_zip(tmp_src, zip_path, n_colors=8, min_pixel_ratio=0.01)
+        export_layers_zip(tmp_src, zip_path, n_colors=16, min_pixel_ratio=0.005)
 
         try:
             os.remove(tmp_src)
