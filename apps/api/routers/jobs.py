@@ -52,7 +52,12 @@ def download_output(job_id: str, output_type: str, db: Session = Depends(get_db)
     }
     filename = filenames.get(output_type, f"wrapready_{job_id[:8]}.{output_type}")
 
-    return FileResponse(output.file_path, media_type=media_type, filename=filename)
+    return FileResponse(
+        output.file_path,
+        media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 def run_processing_sync(job_id: str):
