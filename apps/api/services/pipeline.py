@@ -47,17 +47,14 @@ def stage_upscale(
     """
     Upscale to meet target DPI while preserving the original aspect ratio.
 
-    If vectorizer.ai credentials are set, skip raster upscaling entirely —
-    the EPS/AI files from vectorizer.ai are infinitely scalable, so there is
-    no benefit to degrading the image with Lanczos interpolation.
-    The PNG and PDF outputs stay at original resolution as reference files.
+    Strategy:
+    - Compute the pixel dimensions required to hit target_dpi at the
+      requested print size.
+    - Find the scale factor needed on each axis; use the *smaller* one so
+      the image fits within the print canvas without distortion.
+    - Only upscale, never downscale (the image is already big enough if
+      both axes already exceed target resolution).
     """
-    # Skip raster upscale if vectorizer.ai is handling vector output
-    VECTORIZER_AI_ID = os.getenv("VECTORIZER_AI_ID")
-    VECTORIZER_AI_SECRET = os.getenv("VECTORIZER_AI_SECRET")
-    if VECTORIZER_AI_ID and VECTORIZER_AI_SECRET:
-        print("[pipeline] vectorizer.ai active — skipping raster upscale")
-        return img
     target_w_px = int(target_width_in * target_dpi)
     target_h_px = int(target_height_in * target_dpi)
 
@@ -154,8 +151,8 @@ def stage_text_reconstruct(img: "Image.Image") -> "Image.Image":
 def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     """
     Produce EPS and AI vector outputs using the vectorizer.ai API.
-    Sends the image to vectorizer.ai which returns true vector files —
-    infinitely scalable, fully editable, compatible with all RIP software.
+    Also stores the SVG in the output dir so stage_export can rasterize
+    it at full print resolution for sharp PNG and PDF outputs.
     """
     from services.export_layers import _extract_layers, _build_layered_pdf
 
@@ -171,7 +168,6 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     if vec_img.width > MAX_VEC_DIM or vec_img.height > MAX_VEC_DIM:
         vec_img.thumbnail((MAX_VEC_DIM, MAX_VEC_DIM), Image.Resampling.LANCZOS)
 
-    # Save temp PNG for upload
     import tempfile
     tmp_png = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
     vec_img.convert("RGB").save(tmp_png.name, "PNG")
@@ -180,7 +176,7 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     if VECTORIZER_AI_ID and VECTORIZER_AI_SECRET:
         auth = (VECTORIZER_AI_ID, VECTORIZER_AI_SECRET)
 
-        # ── EPS via vectorizer.ai ─────────────────────────────────────────
+        # ── EPS ───────────────────────────────────────────────────────────
         try:
             import httpx
             with open(tmp_png.name, "rb") as f:
@@ -209,7 +205,7 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
         except Exception as e:
             print(f"[pipeline] vectorizer.ai EPS error: {e}")
 
-        # ── AI via vectorizer.ai ──────────────────────────────────────────
+        # ── SVG (used for sharp PNG/PDF rasterization) ────────────────────
         try:
             import httpx
             with open(tmp_png.name, "rb") as f:
@@ -221,39 +217,43 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
                     timeout=120,
                 )
             if response.status_code == 200:
-                # Save SVG then wrap as AI-compatible file
-                svg_content = response.content
-                ai_path = str(out_dir / "output.ai")
-
-                # Build AI: layered PDF with vectorizer SVG embedded
-                # plus our OCG color layers for Illustrator editing
-                layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.005)
-                pdf_bytes = _build_layered_pdf(vec_img, layers)
-
-                import pikepdf
-                pdf = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
-                with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
-                    meta["xmp:CreatorTool"] = "Adobe Illustrator 28.0"
-                pdf.save(ai_path, min_version="1.4")
-
-                outputs.append({
-                    "output_type": "ai",
-                    "file_path": ai_path,
-                    "file_size": os.path.getsize(ai_path),
-                    "width_px": img.width,
-                    "height_px": img.height,
-                    "is_production_ready": True,
-                })
-                print(f"[pipeline] AI generated: {os.path.getsize(ai_path)} bytes")
+                # Save SVG for use in stage_export
+                svg_path = str(out_dir / "source.svg")
+                with open(svg_path, "wb") as f:
+                    f.write(response.content)
+                print(f"[pipeline] SVG saved for rasterization: {os.path.getsize(svg_path)} bytes")
             else:
-                print(f"[pipeline] vectorizer.ai AI failed: {response.status_code} {response.text[:200]}")
+                print(f"[pipeline] vectorizer.ai SVG failed: {response.status_code}")
+        except Exception as e:
+            print(f"[pipeline] vectorizer.ai SVG error: {e}")
+
+        # ── AI ────────────────────────────────────────────────────────────
+        try:
+            layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.005)
+            pdf_bytes = _build_layered_pdf(vec_img, layers)
+
+            import pikepdf
+            pdf = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
+            with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
+                meta["xmp:CreatorTool"] = "Adobe Illustrator 28.0"
+
+            ai_path = str(out_dir / "output.ai")
+            pdf.save(ai_path, min_version="1.4")
+            outputs.append({
+                "output_type": "ai",
+                "file_path": ai_path,
+                "file_size": os.path.getsize(ai_path),
+                "width_px": img.width,
+                "height_px": img.height,
+                "is_production_ready": True,
+            })
+            print(f"[pipeline] AI generated: {os.path.getsize(ai_path)} bytes")
         except Exception as e:
             print(f"[pipeline] AI error: {e}")
 
     else:
         print("[pipeline] VECTORIZER_AI_ID/SECRET not set — skipping EPS and AI")
 
-    # Cleanup temp file
     try:
         os.remove(tmp_png.name)
     except OSError:
@@ -277,6 +277,57 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
     out_dir = get_output_dir(job_id)
     outputs = []
 
+    # Check if vectorizer.ai SVG is available for sharp rasterization
+    svg_path = str(out_dir / "source.svg")
+    has_svg = os.path.exists(svg_path)
+
+    if has_svg:
+        # Rasterize from vector SVG — sharp at any print size
+        try:
+            import cairosvg
+            Image.MAX_IMAGE_PIXELS = None
+
+            w, h = img.size
+
+            png_path = str(out_dir / "output.png")
+            cairosvg.svg2png(
+                url=svg_path,
+                write_to=png_path,
+                output_width=w,
+                output_height=h,
+            )
+            outputs.append({
+                "output_type": "png",
+                "file_path": png_path,
+                "file_size": os.path.getsize(png_path),
+                "width_px": w,
+                "height_px": h,
+                "is_production_ready": True,
+            })
+            print(f"[pipeline] PNG rasterized from SVG at {w}x{h}")
+
+            pdf_path = str(out_dir / "output.pdf")
+            cairosvg.svg2pdf(
+                url=svg_path,
+                write_to=pdf_path,
+                output_width=w,
+                output_height=h,
+            )
+            outputs.append({
+                "output_type": "pdf",
+                "file_path": pdf_path,
+                "file_size": os.path.getsize(pdf_path),
+                "width_px": w,
+                "height_px": h,
+                "is_production_ready": True,
+            })
+            print(f"[pipeline] PDF rasterized from SVG at {w}x{h}")
+
+            return outputs
+        except Exception as e:
+            print(f"[pipeline] SVG rasterization failed, falling back to PIL: {e}")
+
+    # Fallback: PIL-based export
     png_path = str(out_dir / "output.png")
     img.save(png_path, "PNG", dpi=(target_dpi, target_dpi))
     outputs.append({
