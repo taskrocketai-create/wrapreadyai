@@ -84,6 +84,23 @@ def vectorize_image(
 # Core: color separation + per-layer tracing
 # ---------------------------------------------------------------------------
 
+def _detect_background_idx(arr: "np.ndarray", min_edge_coverage: float = 0.30):
+    """
+    Return the quantized color index that dominates the image edges.
+    If no single color covers >= min_edge_coverage of all edge pixels, return None.
+    Edge-sampling reliably finds rectangular canvas backgrounds without
+    accidentally removing white/light design elements in the interior.
+    """
+    import numpy as np
+    h, w = arr.shape
+    edge = np.concatenate([arr[0, :], arr[-1, :], arr[:, 0], arr[:, -1]])
+    unique, counts = np.unique(edge, return_counts=True)
+    best = np.argmax(counts)
+    if counts[best] / len(edge) >= min_edge_coverage:
+        return unique[best]
+    return None
+
+
 def _build_layered_svg(
     img: "Image.Image",
     n_colors: int,
@@ -106,6 +123,10 @@ def _build_layered_svg(
     # Largest region first → background drawn at bottom
     order = np.argsort(-counts)
 
+    # Detect canvas background — SVG default is transparent, which is
+    # exactly what wrap shops need; no background rect is emitted.
+    bg_idx = _detect_background_idx(arr)
+
     # 2. Vectorize each color region separately
     layer_svgs: List[str] = []
 
@@ -114,6 +135,11 @@ def _build_layered_svg(
         pixel_count = counts[pos]
 
         if pixel_count < min_pixels:
+            continue
+
+        # Skip canvas background — transparent SVG canvas is correct for
+        # vinyl cutting and layer editing in Inkscape / Illustrator
+        if bg_idx is not None and color_idx == bg_idx:
             continue
 
         r = palette[color_idx * 3]
