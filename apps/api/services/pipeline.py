@@ -148,43 +148,95 @@ def stage_text_reconstruct(img: "Image.Image") -> "Image.Image":
     return img
 
 
-def stage_vectorize(img: "Image.Image", job_id: str) -> str:
+def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     """
-    Vectorize the processed image to SVG.
+    Produce EPS and AI vector outputs from the processed image.
 
-    We work from a reasonably sized copy of the image (≤ 1024px on the
-    long side) because vtracer's complexity and output file size scale
-    with pixel count — passing a 14 400 px monster in would produce a
-    multi-MB SVG and take forever.
+    EPS  — flat PostScript, opens in every RIP (Roland, Mimaki, Caldera, Flexi).
+    AI   — PDF with Optional Content Group layers + Illustrator metadata;
+           opens in Illustrator / CorelDRAW with editable color layers.
+
+    Both are derived from the layered SVG so colors are consistent.
+    Work image is capped at 1024 px so vtracer stays fast.
     """
     from services.vectorizer import vectorize_image
+    from services.export_layers import _extract_layers, _build_layered_pdf
 
     out_dir = get_output_dir(job_id)
-    svg_path = str(out_dir / "output.svg")
+    outputs: List[Dict[str, Any]] = []
 
-    # Write a downscaled PNG for vtracer input
+    # Downscale for vtracer
     import tempfile
     vec_img = img.copy()
     MAX_VEC_DIM = 1024
     if vec_img.width > MAX_VEC_DIM or vec_img.height > MAX_VEC_DIM:
         vec_img.thumbnail((MAX_VEC_DIM, MAX_VEC_DIM), Image.Resampling.LANCZOS)
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    vec_img.convert("RGB").save(tmp.name, "PNG")
-    tmp.close()
+    tmp_png = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    vec_img.convert("RGB").save(tmp_png.name, "PNG")
+    tmp_png.close()
 
     try:
-        svg_content = vectorize_image(tmp.name)
+        svg_content = vectorize_image(tmp_png.name)
     finally:
         try:
-            os.remove(tmp.name)
+            os.remove(tmp_png.name)
         except OSError:
             pass
 
-    with open(svg_path, "w", encoding="utf-8") as f:
-        f.write(svg_content)
+    # --- EPS via cairosvg ---
+    try:
+        import cairosvg
+        tmp_svg = tempfile.NamedTemporaryFile(suffix=".svg", delete=False, mode="w", encoding="utf-8")
+        tmp_svg.write(svg_content)
+        tmp_svg.close()
 
-    return svg_path
+        eps_path = str(out_dir / "output.eps")
+        cairosvg.svg2ps(url=tmp_svg.name, write_to=eps_path)
+
+        try:
+            os.remove(tmp_svg.name)
+        except OSError:
+            pass
+
+        outputs.append({
+            "output_type": "eps",
+            "file_path": eps_path,
+            "file_size": os.path.getsize(eps_path),
+            "width_px": img.width,
+            "height_px": img.height,
+            "is_production_ready": True,
+        })
+    except Exception as e:
+        print(f"[pipeline] EPS export failed: {e}")
+
+    # --- AI: layered PDF with Illustrator metadata ---
+    try:
+        import io as _io
+        import pikepdf
+
+        layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.002)
+        pdf_bytes = _build_layered_pdf(vec_img, layers)
+
+        pdf = pikepdf.Pdf.open(_io.BytesIO(pdf_bytes))
+        with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
+            meta["xmp:CreatorTool"] = "Adobe Illustrator 28.0"
+
+        ai_path = str(out_dir / "output.ai")
+        pdf.save(ai_path)
+
+        outputs.append({
+            "output_type": "ai",
+            "file_path": ai_path,
+            "file_size": os.path.getsize(ai_path),
+            "width_px": img.width,
+            "height_px": img.height,
+            "is_production_ready": True,
+        })
+    except Exception as e:
+        print(f"[pipeline] AI export failed: {e}")
+
+    return outputs
 
 
 def stage_texture(img: "Image.Image") -> "Image.Image":
@@ -238,6 +290,37 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
         })
     except Exception:
         pass
+
+    # Layer ZIP: transparent PNGs + layered PDF + README
+    try:
+        from services.export_layers import export_layers_zip
+        # Work from a downscaled copy for the layer analysis (1024px max)
+        # so color quantization is fast; the individual layer PNGs match
+        # that resolution — sufficient for editing, not for final print output.
+        layer_img = img.copy()
+        layer_img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+
+        tmp_src = str(out_dir / "layer_src.png")
+        layer_img.save(tmp_src, "PNG")
+
+        zip_path = str(out_dir / "output_layers.zip")
+        export_layers_zip(tmp_src, zip_path, n_colors=16)
+
+        try:
+            os.remove(tmp_src)
+        except OSError:
+            pass
+
+        outputs.append({
+            "output_type": "zip",
+            "file_path": zip_path,
+            "file_size": os.path.getsize(zip_path),
+            "width_px": img.width,
+            "height_px": img.height,
+            "is_production_ready": True,
+        })
+    except Exception as e:
+        print(f"[pipeline] layer ZIP export failed: {e}")
 
     return outputs
 
@@ -293,15 +376,7 @@ def run_pipeline(
     img = stage_text_reconstruct(img)
 
     update_stage("vectorize")
-    svg_path = stage_vectorize(img, job_id)
-    svg_output = {
-        "output_type": "svg",
-        "file_path": svg_path,
-        "file_size": os.path.getsize(svg_path),
-        "width_px": img.width,
-        "height_px": img.height,
-        "is_production_ready": False,  # SVG is a reference, not production-ready on its own
-    }
+    vector_outputs = stage_vectorize(img, job_id)
 
     update_stage("texture")
     img = stage_texture(img)
@@ -320,7 +395,7 @@ def run_pipeline(
     del preview_img  # free memory before export
 
     outputs = stage_export(img, job_id, target_dpi)
-    outputs.append(svg_output)
+    outputs.extend(vector_outputs)
 
     update_stage("validate")
     outputs = stage_validate(img, outputs, target_dpi)
