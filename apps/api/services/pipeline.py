@@ -205,28 +205,6 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
         except Exception as e:
             print(f"[pipeline] vectorizer.ai EPS error: {e}")
 
-        # ── SVG (used for sharp PNG/PDF rasterization) ────────────────────
-        try:
-            import httpx
-            with open(tmp_png.name, "rb") as f:
-                response = httpx.post(
-                    "https://vectorizer.ai/api/v1/vectorize",
-                    auth=auth,
-                    files={"image": ("image.png", f, "image/png")},
-                    data={"output.file_format": "svg"},
-                    timeout=120,
-                )
-            if response.status_code == 200:
-                # Save SVG for use in stage_export
-                svg_path = str(out_dir / "source.svg")
-                with open(svg_path, "wb") as f:
-                    f.write(response.content)
-                print(f"[pipeline] SVG saved for rasterization: {os.path.getsize(svg_path)} bytes")
-            else:
-                print(f"[pipeline] vectorizer.ai SVG failed: {response.status_code}")
-        except Exception as e:
-            print(f"[pipeline] vectorizer.ai SVG error: {e}")
-
         # ── AI ────────────────────────────────────────────────────────────
         try:
             layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.005)
@@ -277,57 +255,7 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
     out_dir = get_output_dir(job_id)
     outputs = []
 
-    # Check if vectorizer.ai SVG is available for sharp rasterization
-    svg_path = str(out_dir / "source.svg")
-    has_svg = os.path.exists(svg_path)
-
-    if has_svg:
-        # Rasterize from vector SVG — sharp at any print size
-        try:
-            import cairosvg
-            Image.MAX_IMAGE_PIXELS = None
-
-            w, h = img.size
-
-            png_path = str(out_dir / "output.png")
-            cairosvg.svg2png(
-                url=svg_path,
-                write_to=png_path,
-                output_width=w,
-                output_height=h,
-            )
-            outputs.append({
-                "output_type": "png",
-                "file_path": png_path,
-                "file_size": os.path.getsize(png_path),
-                "width_px": w,
-                "height_px": h,
-                "is_production_ready": True,
-            })
-            print(f"[pipeline] PNG rasterized from SVG at {w}x{h}")
-
-            pdf_path = str(out_dir / "output.pdf")
-            cairosvg.svg2pdf(
-                url=svg_path,
-                write_to=pdf_path,
-                output_width=w,
-                output_height=h,
-            )
-            outputs.append({
-                "output_type": "pdf",
-                "file_path": pdf_path,
-                "file_size": os.path.getsize(pdf_path),
-                "width_px": w,
-                "height_px": h,
-                "is_production_ready": True,
-            })
-            print(f"[pipeline] PDF rasterized from SVG at {w}x{h}")
-
-            return outputs
-        except Exception as e:
-            print(f"[pipeline] SVG rasterization failed, falling back to PIL: {e}")
-
-    # Fallback: PIL-based export
+    # PNG and PDF always use the original processed image — not the vectorized version
     png_path = str(out_dir / "output.png")
     img.save(png_path, "PNG", dpi=(target_dpi, target_dpi))
     outputs.append({
