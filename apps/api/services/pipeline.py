@@ -174,46 +174,58 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     w, h = vec_img.size
 
     # ── EPS ──────────────────────────────────────────────────────────────────
-    # Embed each RGBA layer as a base64 PNG inside a composite SVG, then let
-    # cairosvg render that to PostScript. Simple raster images in SVG produce
-    # clean EPS with no compound-path artefacts.
+    # Build EPS directly using PostScript image operators.
+    # cairosvg produces //image (PDF operator) which is invalid in pure PS.
     try:
         import base64
-        import cairosvg
         import tempfile
 
-        svg_parts = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            f'<svg xmlns="http://www.w3.org/2000/svg"',
-            f'     xmlns:xlink="http://www.w3.org/1999/xlink"',
-            f'     width="{w}" height="{h}" viewBox="0 0 {w} {h}">',
-        ]
+        w, h = vec_img.size
 
+        # Build composite: all layers on white background
+        from PIL import Image as PILImage
+        composite = PILImage.new("RGB", (w, h), "white")
         for layer in layers:
-            buf = io.BytesIO()
-            layer["rgba"].save(buf, "PNG")
-            b64 = base64.b64encode(buf.getvalue()).decode()
-            svg_parts.append(
-                f'  <image width="{w}" height="{h}" '
-                f'xlink:href="data:image/png;base64,{b64}"/>'
+            composite.paste(
+                layer["rgba"].convert("RGB"),
+                mask=layer["rgba"].split()[3]
             )
 
-        svg_parts.append("</svg>")
-        composite_svg = "\n".join(svg_parts)
+        # Convert composite to hex-encoded RGB bytes for PostScript
+        rgb_bytes = composite.tobytes()
+        hex_data = rgb_bytes.hex().upper()
 
-        tmp_svg = tempfile.NamedTemporaryFile(
-            suffix=".svg", delete=False, mode="w", encoding="utf-8"
-        )
-        tmp_svg.write(composite_svg)
-        tmp_svg.close()
+        # Build valid EPS with PostScript colorimage operator
+        eps_lines = [
+            "%!PS-Adobe-3.0 EPSF-3.0",
+            f"%%BoundingBox: 0 0 {w} {h}",
+            "%%Pages: 1",
+            "%%EndComments",
+            "%%Page: 1 1",
+            "gsave",
+            f"{w} {h} scale",
+            f"{w} {h} 8",
+            f"[{w} 0 0 -{h} 0 {h}]",
+            "{",
+            f"  currentfile {w} 3 mul string readhexstring pop",
+            "}",
+            "false 3 colorimage",
+        ]
 
+        # Add hex data in 80-char lines
+        for i in range(0, len(hex_data), 80):
+            eps_lines.append(hex_data[i:i+80])
+
+        eps_lines.extend([
+            "grestore",
+            "showpage",
+            "%%EOF",
+        ])
+
+        eps_content = "\n".join(eps_lines)
         eps_path = str(out_dir / "output.eps")
-        cairosvg.svg2ps(url=tmp_svg.name, write_to=eps_path)
-
-        try:
-            os.remove(tmp_svg.name)
-        except OSError:
-            pass
+        with open(eps_path, "w", encoding="latin-1") as f:
+            f.write(eps_content)
 
         outputs.append({
             "output_type": "eps",
