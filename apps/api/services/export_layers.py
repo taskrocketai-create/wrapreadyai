@@ -166,9 +166,22 @@ def _build_layered_pdf(img: "Image.Image", layers: List[dict]) -> bytes:
     Build a PDF where each color region is a separate Optional Content Group
     (layer).  Toggling a layer in Acrobat/Illustrator/CorelDRAW shows/hides
     that color region.
+
+    Also includes a composite base image (all layers merged onto white) so the
+    file shows the full artwork when opened in any flat viewer like Photopea,
+    Preview, or Acrobat without needing to enable layers.
     """
     w, h = img.size
     pdf = pikepdf.Pdf.new()
+
+    # Build composite: all layers composited onto white background
+    # This is the base image visible in flat viewers (Photopea, Acrobat, etc.)
+    composite = Image.new("RGB", (w, h), "white")
+    for layer in layers:
+        composite.paste(
+            layer["rgba"].convert("RGB"),
+            mask=layer["rgba"].split()[3]
+        )
 
     # Create one OCG per layer
     ocg_entries = []
@@ -196,6 +209,21 @@ def _build_layered_pdf(img: "Image.Image", layers: List[dict]) -> bytes:
     xobjects: dict = {}
     properties: dict = {}
 
+    # Base composite layer (always visible, no OCG)
+    comp_bytes = zlib.compress(composite.tobytes())
+    comp_xobj = pdf.make_indirect(pikepdf.Stream(pdf, comp_bytes, **{
+        "/Type": pikepdf.Name("/XObject"),
+        "/Subtype": pikepdf.Name("/Image"),
+        "/Width": w,
+        "/Height": h,
+        "/ColorSpace": pikepdf.Name("/DeviceRGB"),
+        "/BitsPerComponent": 8,
+        "/Filter": pikepdf.Name("/FlateDecode"),
+    }))
+    xobjects["ImBase"] = comp_xobj
+    content_parts.append(f"q\n{w} 0 0 {h} 0 0 cm\n/ImBase Do\nQ\n")
+
+    # OCG layers on top (for Illustrator / CorelDRAW layer editing)
     for i, (ocg, layer) in enumerate(zip(ocg_entries, layers)):
         rgba = layer["rgba"]
         img_key = f"Im{i}"
@@ -229,7 +257,6 @@ def _build_layered_pdf(img: "Image.Image", layers: List[dict]) -> bytes:
         xobjects[img_key] = img_xobj
         properties[ocg_key] = ocg
 
-        # Draw inside marked-content sequence
         content_parts.append(
             f"/OC /{ocg_key} BDC\n"
             f"q\n"
@@ -253,7 +280,7 @@ def _build_layered_pdf(img: "Image.Image", layers: List[dict]) -> bytes:
     pdf.pages.append(pikepdf.Page(page))
 
     buf = io.BytesIO()
-    pdf.save(buf)
+    pdf.save(buf, min_version="1.4")
     return buf.getvalue()
 
 
