@@ -21,7 +21,7 @@ const FORMAT_META: Record<string, { icon: string; label: string; desc: string; h
   },
   png: { icon: "🖼️", label: "PNG", desc: "Full-res flattened image" },
   pdf: { icon: "📄", label: "PDF", desc: "Single-page print PDF" },
-  eps: { icon: "✏️", label: "EPS", desc: "Vector — opens in all RIP software (Roland, Mimaki, Caldera, Flexi)" },
+  eps: { icon: "✏️", label: "EPS", desc: "Vector for RIP software (Roland, Mimaki, Caldera, Flexi) — downloads as ZIP" },
   ai:  { icon: "🎨", label: "AI", desc: "Adobe Illustrator — editable color layers" },
 };
 
