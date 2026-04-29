@@ -30,22 +30,29 @@ def get_job_outputs(job_id: str, db: Session = Depends(get_db)):
 def download_output(job_id: str, output_type: str, db: Session = Depends(get_db)):
     output = db.query(JobOutput).filter(
         JobOutput.job_id == job_id,
-        JobOutput.output_type == output_type
+        JobOutput.output_type == output_type,
     ).first()
     if not output or not os.path.exists(output.file_path):
         raise HTTPException(404, "Output not found")
+
     media_types = {
         "png": "image/png",
         "tiff": "image/tiff",
         "pdf": "application/pdf",
-        "svg": "image/svg+xml",
+        "eps": "application/postscript",
+        "ai": "application/pdf",
+        "zip": "application/zip",
     }
     media_type = media_types.get(output_type, "application/octet-stream")
-    return FileResponse(
-        output.file_path,
-        media_type=media_type,
-        filename=f"wrapready_{job_id[:8]}.{output_type}",
-    )
+
+    filenames = {
+        "zip": f"wrapready_{job_id[:8]}_layers.zip",
+        "ai":  f"wrapready_{job_id[:8]}.ai",
+        "eps": f"wrapready_{job_id[:8]}.eps",
+    }
+    filename = filenames.get(output_type, f"wrapready_{job_id[:8]}.{output_type}")
+
+    return FileResponse(output.file_path, media_type=media_type, filename=filename)
 
 
 def run_processing_sync(job_id: str):
