@@ -47,14 +47,17 @@ def stage_upscale(
     """
     Upscale to meet target DPI while preserving the original aspect ratio.
 
-    Strategy:
-    - Compute the pixel dimensions required to hit target_dpi at the
-      requested print size.
-    - Find the scale factor needed on each axis; use the *smaller* one so
-      the image fits within the print canvas without distortion.
-    - Only upscale, never downscale (the image is already big enough if
-      both axes already exceed target resolution).
+    If vectorizer.ai credentials are set, skip raster upscaling entirely —
+    the EPS/AI files from vectorizer.ai are infinitely scalable, so there is
+    no benefit to degrading the image with Lanczos interpolation.
+    The PNG and PDF outputs stay at original resolution as reference files.
     """
+    # Skip raster upscale if vectorizer.ai is handling vector output
+    VECTORIZER_AI_ID = os.getenv("VECTORIZER_AI_ID")
+    VECTORIZER_AI_SECRET = os.getenv("VECTORIZER_AI_SECRET")
+    if VECTORIZER_AI_ID and VECTORIZER_AI_SECRET:
+        print("[pipeline] vectorizer.ai active — skipping raster upscale")
+        return img
     target_w_px = int(target_width_in * target_dpi)
     target_h_px = int(target_height_in * target_dpi)
 
