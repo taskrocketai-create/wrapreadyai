@@ -49,8 +49,8 @@ except ImportError:
 def export_layers_zip(
     image_path: str,
     output_path: str,
-    n_colors: int = 16,
-    min_pixel_ratio: float = 0.002,
+    n_colors: int = 8,
+    min_pixel_ratio: float = 0.01,
 ) -> str:
     """
     Analyse ``image_path``, separate it into color regions, and write a ZIP
