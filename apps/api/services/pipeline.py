@@ -284,17 +284,6 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
         "is_production_ready": True,
     })
 
-    tiff_path = str(out_dir / "output.tiff")
-    img.save(tiff_path, "TIFF", dpi=(target_dpi, target_dpi), compression="tiff_lzw")
-    outputs.append({
-        "output_type": "tiff",
-        "file_path": tiff_path,
-        "file_size": os.path.getsize(tiff_path),
-        "width_px": img.width,
-        "height_px": img.height,
-        "is_production_ready": True,
-    })
-
     try:
         pdf_path = str(out_dir / "output.pdf")
         img_rgb = img.convert("RGB") if img.mode == "RGBA" else img
