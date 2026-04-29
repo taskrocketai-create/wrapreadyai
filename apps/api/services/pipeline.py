@@ -170,7 +170,7 @@ def stage_vectorize(img: "Image.Image", job_id: str) -> List[Dict[str, Any]]:
     if vec_img.width > MAX_VEC_DIM or vec_img.height > MAX_VEC_DIM:
         vec_img.thumbnail((MAX_VEC_DIM, MAX_VEC_DIM), Image.Resampling.LANCZOS)
 
-    layers = _extract_layers(vec_img, n_colors=16, min_pixel_ratio=0.002)
+    layers = _extract_layers(vec_img, n_colors=8, min_pixel_ratio=0.01)
     w, h = vec_img.size
 
     # ── EPS ──────────────────────────────────────────────────────────────────
@@ -312,7 +312,7 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
         layer_img.save(tmp_src, "PNG")
 
         zip_path = str(out_dir / "output_layers.zip")
-        export_layers_zip(tmp_src, zip_path, n_colors=16)
+        export_layers_zip(tmp_src, zip_path, n_colors=8, min_pixel_ratio=0.01)
 
         try:
             os.remove(tmp_src)
