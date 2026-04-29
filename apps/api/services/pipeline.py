@@ -214,7 +214,7 @@ def stage_export(img: "Image.Image", job_id: str, target_dpi: int) -> List[Dict[
     })
 
     tiff_path = str(out_dir / "output.tiff")
-    img.save(tiff_path, "TIFF", dpi=(target_dpi, target_dpi))
+    img.save(tiff_path, "TIFF", dpi=(target_dpi, target_dpi), compression="tiff_lzw")
     outputs.append({
         "output_type": "tiff",
         "file_path": tiff_path,
@@ -309,13 +309,16 @@ def run_pipeline(
     update_stage("recompose")
     img = stage_recompose(img)
 
+    # Save preview before the heavy export so UI has something to show
+    update_stage("export")
     preview_dir = get_preview_dir(job_id)
-    preview_img = img.copy()
-    preview_img.thumbnail((800, 600), Image.Resampling.LANCZOS)
+    ratio = min(800 / img.width, 600 / img.height)
+    prev_w, prev_h = int(img.width * ratio), int(img.height * ratio)
+    preview_img = img.resize((prev_w, prev_h), Image.Resampling.LANCZOS)
     preview_path = str(preview_dir / "processed.jpg")
     preview_img.convert("RGB").save(preview_path, "JPEG", quality=85)
+    del preview_img  # free memory before export
 
-    update_stage("export")
     outputs = stage_export(img, job_id, target_dpi)
     outputs.append(svg_output)
 
