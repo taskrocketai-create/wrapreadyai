@@ -35,12 +35,34 @@ def download_output(job_id: str, output_type: str, db: Session = Depends(get_db)
     if not output or not os.path.exists(output.file_path):
         raise HTTPException(404, "Output not found")
 
+    # EPS files are blocked by Edge/Chrome security as potentially executable.
+    # Wrap in a ZIP so browsers treat it as a safe archive download.
+    if output_type == "eps":
+        import zipfile, io, tempfile
+        zip_buf = io.BytesIO()
+        eps_filename = f"wrapready_{job_id[:8]}.eps"
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(output.file_path, arcname=eps_filename)
+        zip_buf.seek(0)
+
+        # Write to a temp file so FileResponse can stream it
+        tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        tmp.write(zip_buf.getvalue())
+        tmp.close()
+
+        from fastapi.responses import FileResponse as FR
+        return FR(
+            tmp.name,
+            media_type="application/zip",
+            filename=f"wrapready_{job_id[:8]}_eps.zip",
+            headers={"Content-Disposition": f"attachment; filename=wrapready_{job_id[:8]}_eps.zip"},
+        )
+
     media_types = {
         "png": "image/png",
         "tiff": "image/tiff",
         "pdf": "application/pdf",
-        "eps": "application/postscript",
-        "ai": "application/pdf",
+        "ai": "application/octet-stream",
         "zip": "application/zip",
     }
     media_type = media_types.get(output_type, "application/octet-stream")
@@ -48,7 +70,6 @@ def download_output(job_id: str, output_type: str, db: Session = Depends(get_db)
     filenames = {
         "zip": f"wrapready_{job_id[:8]}_layers.zip",
         "ai":  f"wrapready_{job_id[:8]}.ai",
-        "eps": f"wrapready_{job_id[:8]}.eps",
     }
     filename = filenames.get(output_type, f"wrapready_{job_id[:8]}.{output_type}")
 
