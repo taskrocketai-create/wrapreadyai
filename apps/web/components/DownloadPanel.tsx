@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/api";
+import { DIRECT_API_BASE } from "@/lib/api";
 
 interface Output {
   output_type: string;
@@ -43,7 +43,7 @@ export default function DownloadPanel({ jobId, outputs }: DownloadPanelProps) {
           return (
             <a
               key={type}
-              href={available ? `${API_BASE}/api/jobs/${jobId}/download/${type}` : undefined}
+              href={available ? `${DIRECT_API_BASE}/api/jobs/${jobId}/download/${type}` : undefined}
               download
               className={[
                 "flex items-center gap-4 p-4 rounded-xl border transition-all",
